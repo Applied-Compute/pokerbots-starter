@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+uv.lock
+traces/
+harness/runs/
+# Vals' poker engine (see harness/README.md). Remove this line only if bundling the engine is approved.
+harness/vendor/

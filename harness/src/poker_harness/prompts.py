@@ -27,7 +27,7 @@ class TableRules:
     preset (`completions.EVENT_PARAMS`).
 
     Official-rules fields (all off by default):
-    - `total_hands` is the game's length in hands (the event: 60, ten orbits of six); a carry-over game
+    - `total_hands` is the game's length in hands (the event: 30, five orbits of six); a carry-over game
       (`reset_stacks=False`) also ends when one player has all the chips. Blinds stay `small_blind`/`big_blind`.
     - `ranking`: "elimination" (players still in at the end rank above every busted player, by chips; busted
       players rank by when they busted, later is better) or "chips" (final chips only). Setting it also adds the

@@ -22,7 +22,7 @@ def test_the_event_preset_is_the_official_rules_and_explicit_keys_win() -> None:
     assert EVENT_PARAMS["thinking"] is True
     prompt = system_prompt(rules)
     assert "six-seat" in prompt and "numbered 0-5" in prompt and TALK_INVITE in prompt and "Blinds are 1/2." in prompt
-    assert "a player with zero chips is out" in prompt and "The game lasts 60 hands" in prompt
+    assert "a player with zero chips is out" in prompt and "The game lasts 30 hands" in prompt
     assert "played as check if checking is legal, else fold, with no retry" in prompt
     assert "private scratchpad" in prompt and "up to 10000 output tokens" in prompt and "at most 5000 output" in prompt
     assert table_rules(with_preset({"preset": "event", "seats": 10})).seats == 10

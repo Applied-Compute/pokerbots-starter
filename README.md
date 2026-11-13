@@ -9,7 +9,7 @@ train on, and how, is up to you.
 | Rule | Value |
 | --- | --- |
 | Table | 6-max no-limit hold'em, seats `seat0` to `seat5`, fixed blinds 1/2 |
-| Game | 60 hands (10 orbits). Everyone starts with 200 chips (100 BB); chips carry over, no rebuys, a busted seat is out |
+| Game | 30 hands (5 orbits). Everyone starts with 200 chips (100 BB); chips carry over, no rebuys, a busted seat is out |
 | Ranking | Seats still in at the end rank above busted seats, by final chips; busted seats rank by when they busted |
 | Action | One `submit_action(action, amount, say)` call per decision |
 | Invalid moves | An illegal action, a bad amount, unreadable arguments, no call or a reply cut off at the cap: check, else fold (no retry) |
@@ -35,7 +35,7 @@ You are a professional poker player in a six-seat no-limit Texas Hold'em game ag
 
 Rules:
 - Blinds are 1/2. Everyone starts with 200 chips. There is no rake and no rebuys; a player with zero chips is out for the rest of the game.
-- The game lasts 60 hands, or ends sooner when one player has all the chips. Players still in at the end rank above everyone who busted, by their chips; players who busted rank by when they busted (later ranks higher). Your goal is the best rank.
+- The game lasts 30 hands, or ends sooner when one player has all the chips. Players still in at the end rank above everyone who busted, by their chips; players who busted rank by when they busted (later ranks higher). Your goal is the best rank.
 - Seats are numbered 0-5 clockwise. The button moves one live seat clockwise every hand; the two live seats after the button post the small and big blind.
 - Bet and raise amounts are "to" amounts: the total you will have committed on the current street after the action.
 
@@ -143,7 +143,7 @@ outcome. To use your own reward, edit the marked extension points in `grading.py
 `GRADER_PARAMS`, `artifacts`) and restart the harness; keep failures at 0 and real hands above it.
 
 **What these tasks don't cover.** Every task is a single hand starting fresh at 100 BB, so the scratchpad starts
-blank and its update is never read, and carried stacks and busting never come up. An event game is 60 hands with
+blank and its update is never read, and carried stacks and busting never come up. An event game is 30 hands with
 both. How to train for that is up to you.
 
 Smoke first, then train:

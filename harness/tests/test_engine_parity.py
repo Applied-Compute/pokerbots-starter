@@ -28,7 +28,7 @@ def test_the_recorded_games_cover_every_case() -> None:
         assert covered[key] > 100, key
     for key in ("all_in_hands", "side_pot_hands", "split_pot_hands", "fallbacks", "talk_lines", "busted_seats"):
         assert covered[key] > 10, key
-    assert sum(1 for s in SPECS if s.get("event")) >= 5  # full event games: 60 hands, busting, strict, scratchpad
+    assert sum(1 for s in SPECS if s.get("event")) >= 5  # 60-hand event-rule games: busting, strict, scratchpad
     for key in ("cleanup_updated", "cleanup_unchanged", "cleanup_attempt_too_long", "cleanup_attempt_malformed"):
         assert covered[key] > 10, key
 

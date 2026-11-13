@@ -1,0 +1,19 @@
+.git/
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+.DS_Store
+# Nothing of ours runs on AC2: the project is an empty stub (src/vals_poker/__init__.py). Everything else runs on
+# your machines and stays out of the upload: the harness (and Vals' engine), the local tools and the launchers.
+harness/
+vals_tools/
+rl/
+opsd/
+tests/
+traces/

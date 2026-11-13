@@ -16,7 +16,7 @@ from poker_harness.server import create_app
 def test_the_event_preset_is_the_official_rules_and_explicit_keys_win() -> None:
     rules = table_rules(with_preset({"seed": 1, "preset": "event"}))
     assert (rules.seats, rules.table_talk, rules.reset_stacks, rules.starting_stack) == (6, True, False, 200)
-    assert (rules.small_blind, rules.big_blind, rules.total_hands, rules.ranking) == (1, 2, 60, "elimination")
+    assert (rules.small_blind, rules.big_blind, rules.total_hands, rules.ranking) == (1, 2, 30, "elimination")
     assert rules.strict_actions and rules.scratchpad and rules.scratchpad_chars == 5000
     assert (rules.max_completion_tokens, rules.cleanup_max_completion_tokens) == (5000, 10000)
     assert EVENT_PARAMS["thinking"] is True

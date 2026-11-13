@@ -40,7 +40,10 @@ sharded server on port 8765. Run `ac2 harness connect --upstream http://<host>:8
 ## Endpoints
 
 - `POST /submit`, `/get_status`, `/collect_outputs`: the BYOH rollout lifecycle. `submit` starts the table in
-  `task.env_params`; `collect_outputs` returns the game log (Vals' log shape), rules and policy seats.
+  `task.env_params`; `collect_outputs` returns the game log (Vals' log shape), rules and policy seats. AC2's
+  connector carries at most 1 MiB, so at scratchpad tables the returned log keeps each seat's final scratchpad and
+  counts of its cleanup turns, not their full history, and a still-too-big log loses model text first. The full log
+  stays in the runs directory, and harness-side grading reads the full log.
 - `POST /submit_grading`, `/get_grading_status`, `/collect_score`: the Grader API. The score is the policy seat's
   reward from the sample grader (`grading.py`, with marked extension points); artifacts carry `ev_bb`, `realized_bb`, `policy_decisions`, `policy_format_errors` and
   `folded`.

@@ -125,7 +125,13 @@ async def test_a_reply_cut_at_the_cap_is_played_afk_even_with_an_action(tmp_path
         assert not response["submitted_by_tool"] and action["action"]["type"] in ("check", "fold")
         assert response["error"] == "reply hit the 5000-token cap"
     for seat in outputs["log"]["private"].values():  # cleanup replies were cut too: nothing changes
-        assert seat["scratchpad"] == "" and seat["hands"]["1"]["cleanup"]["result"] == "unchanged"
+        assert seat["scratchpad"] == "" and seat["cleanups"] == {
+            "turns": 1,
+            "updated": 0,
+            "cut": 0,
+            "unchanged": 1,
+            "retried": 0,
+        }
 
 
 async def test_a_responses_reply_cut_at_the_cap_is_marked_truncated() -> None:

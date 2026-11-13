@@ -9,12 +9,13 @@ from typing import Any
 
 from poker_harness.engine.table import DecisionContext, LegalActions, SeatView
 
+from poker_harness.completions import table_rules, with_preset
 from poker_harness.game import placements, play_session
 from poker_harness.prompts import TableRules
 from poker_harness.seat import TOO_EARLY, Completion, ModelSeat
 
 OFFICIAL = TableRules(
-    total_hands=60,
+    total_hands=30,
     reset_stacks=False,
     seats=3,
     ranking="elimination",
@@ -84,7 +85,7 @@ async def test_chips_carry_over_and_busted_seats_sit_out_until_one_player_has_ev
     log = await play_session("g", 7, players, rules)
     hands, final = log["hands"], log["final_stacks"]
     assert sum(final.values()) == 18 and log["complete"]
-    assert len(hands) < 60 and max(final.values()) == 18  # it ended because one player had every chip
+    assert len(hands) < 30 and max(final.values()) == 18  # it ended because one player had every chip
     for before, after in itertools.pairwise(hands):
         assert after["stacks_before"] == {n: s for n, s in before["ending_stacks"].items() if s > 0}
         assert set(after["starting_state"]) == set(after["stacks_before"])  # busted seats are not dealt in
@@ -128,7 +129,7 @@ def test_placements_rank_survivors_by_chips_then_busted_seats_in_reverse_elimina
 
 def context(legal: LegalActions, hand_actions: list | None = None) -> DecisionContext:
     views = [SeatView(i, f"seat{i}", 200, 0, "") for i in range(3)]
-    return DecisionContext(1, 60, "preflop", 0, 2, 0, ["Ah", "Kd"], [], 3, views, hand_actions or [], legal)
+    return DecisionContext(1, 30, "preflop", 0, 2, 0, ["Ah", "Kd"], [], 3, views, hand_actions or [], legal)
 
 
 FACING_BET = LegalActions(
@@ -332,3 +333,10 @@ async def test_private_content_appears_only_in_the_private_sections() -> None:
     for player in players:  # the scratchpad block and the cleanup turn are withheld from the transcript
         assert CANARY in json.dumps(player.messages) and "SCRATCHPAD" not in json.dumps(player.public_messages())
         assert "is over" not in json.dumps(player.public_messages())
+
+
+async def test_an_event_game_stops_at_its_30_hand_cap() -> None:
+    rules = table_rules(with_preset({"preset": "event", "seed": 1, "seats": 3, "scratchpad": False}))
+    log = await play_session("g", 13, seats(3, rules), rules)  # calling stations at 100 BB: nobody busts in 30 hands
+    assert rules.total_hands == 30 and len(log["hands"]) == 30 and not log["eliminated_on_hand"]
+    assert min(log["ranking"]["places"].values()) == 1 and sum(log["net_chips"].values()) == 0

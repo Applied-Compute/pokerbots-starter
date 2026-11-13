@@ -2,7 +2,7 @@ import asyncio
 import json
 
 import pytest
-from poker_agent_benchmark_service.table.scripted import ScriptedPlayer
+from poker_harness.engine import ScriptedPlayer
 from talk_snapshot import GOLDEN, POLICY_SAY, snapshot
 
 from poker_harness import Completion, ModelSeat, TableRules, play_session, system_prompt

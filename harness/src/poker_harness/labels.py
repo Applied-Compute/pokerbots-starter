@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from poker_agent_benchmark_service.evaluation import true_equity
+from .engine import true_equity
 
 
 def fold_regret_bb(action: dict[str, Any], hole: list[str], opponents: list[list[str]], big_blind: int) -> float:

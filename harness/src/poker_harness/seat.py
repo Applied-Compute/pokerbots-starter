@@ -17,7 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from poker_agent_benchmark_service.table.engine import Decision, DecisionContext
+from .engine import Decision, DecisionContext
 
 from .prompts import (
     SUBMIT_ACTION,

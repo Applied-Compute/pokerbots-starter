@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from poker_agent_benchmark_service.table.engine import HandRunner, codes
+from .engine import HandRunner, codes
 
 from .prompts import TableRules
 

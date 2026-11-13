@@ -1,6 +1,6 @@
 import asyncio
 
-from poker_agent_benchmark_service.table.scripted import ScriptedPlayer
+from poker_harness.engine import ScriptedPlayer
 
 from poker_harness import TableRules, play_session
 from poker_harness.spots import chen_score, hole_cards

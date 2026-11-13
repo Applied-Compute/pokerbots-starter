@@ -1,4 +1,4 @@
-"""Play one table on the Vals hand engine with no cross-hand history; table talk only with `rules.table_talk`.
+"""Play one table on the hand engine (`engine/`) with no cross-hand history; table talk only with `rules.table_talk`.
 
 The log keeps the Vals game-log shape, so `evaluation.grade`, `metrics.tally` and `rating.rate` work on it unchanged.
 """
@@ -9,7 +9,7 @@ from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from poker_agent_benchmark_service.table.engine import HandRunner, Player
+from .engine import HandRunner, Player
 
 from .prompts import MAX_RAW_TALK_CHARS, TableRules, sanitize_talk
 

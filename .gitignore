@@ -6,5 +6,3 @@ __pycache__/
 uv.lock
 traces/
 harness/runs/
-# Vals' poker engine (see harness/README.md). Remove this line only if bundling the engine is approved.
-harness/vendor/

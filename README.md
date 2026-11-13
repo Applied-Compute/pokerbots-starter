@@ -46,6 +46,7 @@ You may optionally add a short `say` message (up to 70 characters) that the othe
 | --- | --- |
 | [`harness/`](harness/) | The official harness: plays each game and grades it. Runs on your machines. |
 | [`harness/src/poker_harness/grading.py`](harness/src/poker_harness/grading.py) | The sample grader: scores each rollout through AC2's Grader API |
+| [`harness/src/poker_harness/engine/`](harness/src/poker_harness/engine/) | The poker engine: dealing, betting, side pots and showdown, on PokerKit |
 | [`rl/`](rl/) | A naive RL example: single-hand datasets and a GRPO run |
 | [`opsd/`](opsd/) | A naive OPSD example: distill a prompted hint into the weights |
 | `vals_tools/` | Shared helpers: task format, BYOH evals, scoring |
@@ -79,7 +80,7 @@ Your project id (`prj_...`) is in the platform URL.
 
 The harness is one server for both jobs: the BYOH rollout API (`/submit`, `/get_status`, `/collect_outputs`) and the
 Grader API (`/submit_grading`, `/get_grading_status`, `/collect_score`). Runs that name no grader are graded by it.
-It needs Vals' poker engine; see [`harness/README.md`](harness/README.md).
+See [`harness/README.md`](harness/README.md) for its options.
 
 ```bash
 # terminal 1: the harness, on 127.0.0.1:8765
@@ -185,5 +186,5 @@ hands, read the game logs in `harness/runs/` or export the traces (`ac2 traces d
 
 ```bash
 uv run pytest                 # tasks, scoring, the OPSD builder and both training configs
-cd harness && uv run pytest   # the harness and the sample grader (needs Vals' engine)
+cd harness && uv run pytest   # the harness, the engine (with its parity check) and the sample grader
 ```

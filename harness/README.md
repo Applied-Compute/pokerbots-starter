@@ -1,21 +1,17 @@
 # poker_harness
 
-The Harness API for the Vals poker table, built on Vals' hand engine (`poker-agent-benchmark-service`). It plays
-one table per rollout and grades it through AC2's Grader API.
-
-## Install Vals' engine
-
-The engine is not on PyPI. Put the copy Vals gives you at `vendor/poker-agent` (where `pyproject.toml` points), or
-point `[tool.uv.sources]` at the git URL Vals grants you access to.
-
-The engine depends on Vals' public
-[`create-benchmark-service`](https://github.com/vals-ai/create-benchmark-service), installed from git, so the
-machine needs `git`.
+The Harness API for the Vals poker table. It plays one game per rollout on its own poker engine
+(`src/poker_harness/engine/`, on top of [PokerKit](https://github.com/uoftcprg/pokerkit)) and grades it through AC2's
+Grader API with the sample grader (`src/poker_harness/grading.py`).
 
 ```bash
 uv sync
 uv run pytest -q
 ```
+
+The engine is ported from Vals' original engine and plays identically: `tests/test_engine_parity.py` replays a fixed
+set of over 2,000 seeded hands (6-max and 10-max, talk on and off, reset and carried stacks, all-ins, side pots and
+split pots, every action type) and checks every game log against digests recorded on Vals' engine.
 
 ## Serve
 
@@ -38,7 +34,7 @@ AC2_API_KEY=<key> SHARDS=4 ./run_sharded.sh                                     
 `rollout_id` (or `Idempotency-Key` on `submit`). One shard handles a few dozen concurrent tables; size shards and
 CPUs to your training and eval concurrency.
 
-**Container.** With the engine in `vendor/`, `docker build -t poker-harness .` builds an image that runs the
+**Container.** `docker build -t poker-harness .` builds an image that runs the
 sharded server on port 8765. Run `ac2 harness connect --upstream http://<host>:8765` beside it.
 
 ## Endpoints

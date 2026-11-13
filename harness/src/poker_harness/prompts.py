@@ -15,8 +15,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from poker_agent_benchmark_service.table.engine import Decision, DecisionContext
-from poker_agent_benchmark_service.table.prompts import parse_decision as parse_vals_decision
+from .engine import Decision, DecisionContext
+from .engine import parse_decision as parse_vals_decision
 
 
 @dataclass(frozen=True)

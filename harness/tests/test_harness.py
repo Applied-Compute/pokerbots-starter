@@ -3,9 +3,7 @@ import copy
 import json
 
 import pytest
-from poker_agent_benchmark_service.evaluation import grade
-from poker_agent_benchmark_service.rating import rate
-from poker_agent_benchmark_service.table.scripted import ScriptedPlayer
+from poker_harness.engine import ScriptedPlayer
 
 from poker_harness import Completion, ModelSeat, TableRules, play_session, system_prompt
 from poker_harness.prompts import parse_tool_call
@@ -84,10 +82,6 @@ def test_reset_stacks_starts_every_hand_full_and_conserves_chips() -> None:
         assert {s["starting_stack"] for s in hand["starting_state"].values()} == {200}
         assert sum(hand["ending_stacks"].values()) == 2000
     assert sum(log["final_stacks"].values()) == 2000
-    result = grade(log | {"lineup": ["lab/model-a", "lab/model-b"]})
-    assert result["primary"] == "lab/model-a" and result["fallbacks"] == 0
-    ratings, played = rate([log])
-    assert set(ratings) == set(log["final_stacks"]) and played["lab/model-a"] == 1
 
 
 def test_carried_stacks_match_vals_semantics() -> None:

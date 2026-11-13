@@ -32,7 +32,7 @@ from ac2.sdk.run_config import (
 )
 
 MODEL = "Qwen/Qwen3.6-35B-A3B"
-PREFIX = "vals-poker-6max"
+PREFIX = "pokerbots"
 IPB, SPI = 16, 4  # hands per step x samples per hand: 64 rollouts per step
 STEPS = 60
 LEARNING_RATE = 2e-6
@@ -55,7 +55,7 @@ def run_config(
         model=MODEL,
         name=name,
         description=f"GRPO on {prefix}-train through the self-hosted poker harness, EV reward, harness-side grading.",
-        tags={"benchmark": "vals-poker", "method": "grpo", "dataset": f"{prefix}-train"},
+        tags={"benchmark": "pokerbots", "method": "grpo", "dataset": f"{prefix}-train"},
         experiment_cfg=ExperimentConfig(
             method=RLConfig(advantage="dr-grpo", use_kl_loss=True, kl_loss_coef=KL_COEF),
             step=StepConfig(
@@ -96,7 +96,7 @@ def run_config(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="vals-poker")
+    parser.add_argument("--project", default="pokerbots")
     parser.add_argument("--prefix", default=PREFIX, help="dataset prefix from rl/make_dataset.py")
     parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
@@ -105,7 +105,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    name = f"vals-poker-grpo-{datetime.now(UTC):%Y%m%d-%H%M%S}"
+    name = f"pokerbots-grpo-{datetime.now(UTC):%Y%m%d-%H%M%S}"
     config = run_config(name, args.prefix, args.steps, args.lr, args.concurrency, args.cluster_id)
     if args.dry_run:
         print(json.dumps(config.to_json(), indent=1, default=str))

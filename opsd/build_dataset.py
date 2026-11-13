@@ -1,6 +1,6 @@
 """Build an offline-OPSD dataset from the base model's own hands: one `HintedTask` per decision.
 
-1. Run base on the train deals through the harness (`python -m vals_tools.eval --dataset vals-poker-6max-train
+1. Run base on the train deals through the harness (`python -m vals_tools.eval --dataset pokerbots-train
    --deployment <base deployment>`).
 2. Export that eval's traces and turn each policy decision into a task:
    - `input`: the decision's prompt (system message, user messages, earlier replies and tool results) followed by the
@@ -14,7 +14,7 @@
 Keep only clean decisions: exactly one `submit_action` call and a reply under the token cap. The after-hand
 `update_scratchpad` turns are skipped. Use train deals only.
 
-    uv run python opsd/build_dataset.py --eval eval_xxx --dataset vals-poker-6max-opsd-train --dry-run
+    uv run python opsd/build_dataset.py --eval eval_xxx --dataset pokerbots-opsd-train --dry-run
 """
 
 from __future__ import annotations
@@ -80,7 +80,7 @@ def decision_tasks(trace: dict, hint: str, max_tokens: int) -> tuple[list[Hinted
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="vals-poker")
+    parser.add_argument("--project", default="pokerbots")
     parser.add_argument("--eval", required=True, help="base model's eval on the train deals")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--max-tokens", type=int, default=5_000, help="replies this long count as truncated (the event's cap)")

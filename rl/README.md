@@ -1,6 +1,6 @@
 # RL: GRPO on single 6-max hands
 
-[`train.py`](train.py) trains Qwen3.6-35B-A3B on `vals-poker-6max-train` through your self-hosted harness:
+[`train.py`](train.py) trains Qwen3.6-35B-A3B on `pokerbots-train` through your self-hosted harness:
 
 - **Rollouts:** each hand is played by the harness; the trained seat calls the run's inference engine through the
   rollout relay and the five opponents call your opponent endpoint.
@@ -11,7 +11,7 @@
 - **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
   In a single-hand task that update is never read, and the grader ignores it. Training caps every completion at
   `max_response_len` (5,000), including that turn.
-- **Checkpoints and eval:** a checkpoint every 10 steps, and a sidecar eval on `vals-poker-6max-select` at step 0
+- **Checkpoints and eval:** a checkpoint every 10 steps, and a sidecar eval on `pokerbots-select` at step 0
   (base) and every checkpoint.
 
 ## Run
@@ -20,7 +20,7 @@ With the harness and connector running and the datasets uploaded:
 
 ```bash
 uv run python rl/train.py --project <project> --dry-run     # print the resolved config
-uv run python -m vals_tools.eval --project <project> --dataset vals-poker-6max-smoke --model <catalog-model>   # harness smoke first
+uv run python -m vals_tools.eval --project <project> --dataset pokerbots-smoke --model <catalog-model>   # harness smoke first
 uv run python rl/train.py --project <project>
 ```
 
@@ -39,6 +39,6 @@ change the obvious things.
 
 1. Pick a checkpoint from the sidecar on `-select`, compared with step 0.
 2. Serve that checkpoint and base the same way (as inference deployments) and evaluate both on
-   `vals-poker-6max-eval`.
+   `pokerbots-eval`.
 3. `uv run python -m vals_tools.score --project <project> --eval <checkpoint-eval> --base <base-eval>`.
    The difference from base is paired per deal; its 95% CI tells you whether it is more than noise.

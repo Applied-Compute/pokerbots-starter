@@ -17,7 +17,7 @@ split pots, every action type) and checks every game log against digests recorde
 
 ```bash
 AC2_API_KEY=<key> uv run uvicorn poker_harness.server:app --host 127.0.0.1 --port 8765   # one process
-AC2_API_KEY=<key> SHARDS=4 ./run_sharded.sh                                              # sharded, same port
+AC2_API_KEY=<key> SHARDS=4 uv run ./run_sharded.sh                                              # sharded, same port
 ```
 
 | Variable | Default | Purpose |

@@ -1,12 +1,15 @@
-"""GRPO on 6-max poker hands through the self-hosted harness, graded harness-side.
+"""GRPO on single 6-max hands through your self-hosted harness, graded by the harness's sample grader.
 
-The harness plays each hand (the trained seat through AC2's rollout relay, the other five seats through your
-opponent endpoint) and scores it with the plain EV reward: 6 + clip(EV / 20 BB, -5, +5), failures 0. The run names
-no grader, so AC2 calls the harness's Grader API. Checkpoints every 10 steps; a sidecar eval plays the `select` deals
-at each checkpoint so you can pick one. Judge the pick on `eval` afterwards, never on `select`.
+Every setting this script sends is a flag below. A flag left unset is not sent, so AC2 uses its own default for it
+(learning rate, response and context length, inference replicas, sampling concurrency, ...). `--dry-run` prints the
+settings this launch sets and the exact configuration it would submit; nothing else is overridden.
 
-    uv run python rl/train.py --project <project> --dry-run
-    uv run python rl/train.py --project <project>
+    uv run python rl/train.py --dry-run
+    uv run python rl/train.py
+    uv run python rl/train.py --lr 1e-6 --max-response-len 10000 --dry-run   # override any AC2 default explicitly
+
+The run names no grader, so AC2 asks your harness to grade every rollout. At step 0 and every checkpoint it also
+plays `<prefix>-select` as an in-run eval; judge your pick on `<prefix>-eval` afterwards.
 """
 
 from __future__ import annotations
@@ -14,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 from ac2.sdk import Client, TrainingCustomHarnessConfig
 from ac2.sdk.run_config import (
@@ -31,83 +35,119 @@ from ac2.sdk.run_config import (
     TrainerConfig,
 )
 
-MODEL = "Qwen/Qwen3.6-35B-A3B"
-PREFIX = "pokerbots"
-IPB, SPI = 16, 4  # hands per step x samples per hand: 64 rollouts per step
-STEPS = 60
-LEARNING_RATE = 2e-6
-KL_COEF = 0.01
-# The event caps each decision at 5,000 output tokens, reasoning included; train with the same cap so the model
-# learns to fit its reasoning and the tool call inside it.
-MAX_RESPONSE, MAX_TOTAL = 5_000, 32_768
-GRADING_TIMEOUT_S = 900
+
+def _set(**values: Any) -> dict[str, Any]:
+    """Only the values that were given: anything None is left to AC2's default."""
+    return {key: value for key, value in values.items() if value is not None}
 
 
-def run_config(
-    name: str,
-    prefix: str = PREFIX,
-    steps: int = STEPS,
-    lr: float = LEARNING_RATE,
-    concurrency: int | None = None,
-    cluster_id: str | None = None,
-) -> RunConfig:
+def run_config(args: argparse.Namespace, name: str) -> RunConfig:
+    harness = TrainingCustomHarnessConfig(**_set(grading_timeout_seconds=args.grading_timeout))
+    eval_cfg = (
+        EvalConfig(mode="off")
+        if args.no_eval
+        else EvalConfig(
+            **_set(
+                datasets=(EvalDatasetConfig(ac2_dataset_name=args.eval_dataset or f"{args.prefix}-select"),),
+                interval=args.eval_every,
+                eval_before_train=True,  # step 0 plays the same deals with the untrained model: the comparison
+                samples_per_problem=1,
+                mode="sidecar",
+                global_sampling_concurrency=args.eval_concurrency,
+            )
+        )
+    )
+    launch = _set(cluster_id=args.cluster_id, tensorboard_enabled=args.tensorboard or None)
     return RunConfig(
-        model=MODEL,
+        model=args.model,
         name=name,
-        description=f"GRPO on {prefix}-train through the self-hosted poker harness, EV reward, harness-side grading.",
-        tags={"benchmark": "pokerbots", "method": "grpo", "dataset": f"{prefix}-train"},
+        description=f"GRPO on {args.prefix}-train through the self-hosted poker harness, harness-side grading.",
+        tags={"benchmark": "pokerbots", "method": "grpo", "dataset": f"{args.prefix}-train"},
         experiment_cfg=ExperimentConfig(
-            method=RLConfig(advantage="dr-grpo", use_kl_loss=True, kl_loss_coef=KL_COEF),
+            method=RLConfig(
+                **_set(advantage=args.advantage, use_kl_loss=args.kl_coef > 0 or None, kl_loss_coef=args.kl_coef or None)
+            ),
             step=StepConfig(
-                num_train_steps=steps,
-                problem_batch_size=IPB,
-                samples_per_problem=SPI,
-                checkpoint_interval=10,
-                keep_last_checkpoints=6,
+                **_set(
+                    num_train_steps=args.steps,
+                    problem_batch_size=args.hands_per_step,
+                    samples_per_problem=args.samples_per_hand,
+                    checkpoint_interval=args.checkpoint_every,
+                    keep_last_checkpoints=args.keep_checkpoints,
+                )
             ),
             tasks=TasksConfig(
-                datasets=(TrainDatasetConfig(ac2_dataset_name=f"{prefix}-train"),),
-                custom_harness=TrainingCustomHarnessConfig(grading_timeout_seconds=GRADING_TIMEOUT_S),
-                # Qwen thinking is on at the event; train with it on.
-                apply_chat_template_kwargs={"enable_thinking": True},
+                datasets=(TrainDatasetConfig(ac2_dataset_name=f"{args.prefix}-train"),),
+                custom_harness=harness,
+                **_set(apply_chat_template_kwargs={"enable_thinking": True} if args.thinking else None),
             ),
-            trainer=TrainerConfig(learning_rate=lr),
+            trainer=TrainerConfig(**_set(learning_rate=args.lr)),
             rollout=RolloutConfig(
-                n_inference_replicas=1,
-                max_response_len=MAX_RESPONSE,
-                max_total_len=MAX_TOTAL,
-                # Concurrent hands on your harness; size it to what your harness can serve.
-                global_sampling_concurrency=concurrency or IPB * SPI,
+                **_set(
+                    max_response_len=args.max_response_len,
+                    max_total_len=args.max_total_len,
+                    global_sampling_concurrency=args.concurrency,
+                    n_inference_replicas=args.inference_replicas,
+                )
             ),
-            eval=EvalConfig(
-                datasets=(EvalDatasetConfig(ac2_dataset_name=f"{prefix}-select"),),
-                interval=10,
-                eval_before_train=True,  # step 0 is base on the same deals: the in-run comparison
-                samples_per_problem=1,
-                global_sampling_concurrency=32,
-                mode="sidecar",
-                n_inference_replicas=1,
-            ),
+            eval=eval_cfg,
         ),
-        # W&B is off because AC2 refuses `wandb_enabled` for customer orgs today; set it if your org allows it.
-        internal_cfg=InternalConfig(launch=InternalLaunchConfig(cluster_id=cluster_id, tensorboard_enabled=True)),
+        **_set(internal_cfg=InternalConfig(launch=InternalLaunchConfig(**launch)) if launch else None),
     )
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
-    parser.add_argument("--prefix", default=PREFIX, help="dataset prefix from rl/make_dataset.py")
-    parser.add_argument("--steps", type=int, default=STEPS)
-    parser.add_argument("--lr", type=float, default=LEARNING_RATE)
-    parser.add_argument("--concurrency", type=int, help="cap on concurrent hands (default IPB x SPI)")
-    parser.add_argument("--cluster-id")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--project", default="pokerbots")
+    p.add_argument("--prefix", default="pokerbots", help="dataset prefix from rl/make_dataset.py")
+    p.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B", help="base model (arena entries must fine-tune this one)")
+    p.add_argument("--dry-run", action="store_true", help="print the settings and configuration, submit nothing")
+    g = p.add_argument_group("set by default (the GRPO recipe); change them with these flags")
+    g.add_argument("--steps", type=int, default=60, help="training steps (default 60)")
+    g.add_argument("--hands-per-step", type=int, default=16, help="tasks per step (default 16)")
+    g.add_argument("--samples-per-hand", type=int, default=4, help="attempts per task, the GRPO group (default 4)")
+    g.add_argument("--advantage", default="dr-grpo", help="advantage estimator (default dr-grpo)")
+    g.add_argument("--kl-coef", type=float, default=0.01, help="KL penalty toward the base model; 0 turns it off")
+    g.add_argument("--checkpoint-every", type=int, default=10, help="steps between checkpoints (default 10)")
+    g.add_argument("--eval-every", type=int, default=10, help="steps between in-run evals (default 10)")
+    g.add_argument("--no-eval", action="store_true", help="no in-run eval")
+    g.add_argument("--no-thinking", dest="thinking", action="store_false",
+                   help="don't render prompts with Qwen thinking on (the event has it on)")
+    g.add_argument("--no-tensorboard", dest="tensorboard", action="store_false", help="don't record TensorBoard logs")
+    a = p.add_argument_group("left to AC2's defaults unless you set them")
+    a.add_argument("--lr", type=float, help="learning rate")
+    a.add_argument("--max-response-len", type=int,
+                   help="the training engine's per-reply token limit (the harness already asks for at most 5,000 "
+                        "tokens per decision and 10,000 per cleanup turn)")
+    a.add_argument("--max-total-len", type=int, help="prompt plus reply token limit")
+    a.add_argument("--concurrency", type=int, help="concurrent hands on your harness")
+    a.add_argument("--inference-replicas", type=int, help="inference replicas for rollouts")
+    a.add_argument("--keep-checkpoints", type=int, help="checkpoints to keep")
+    a.add_argument("--eval-dataset", help="in-run eval dataset (default <prefix>-select)")
+    a.add_argument("--eval-concurrency", type=int, help="concurrent hands in the in-run eval")
+    a.add_argument("--grading-timeout", type=float, help="seconds AC2 waits for your harness to grade a rollout")
+    a.add_argument("--cluster-id")
+    return p
 
+
+def explicit_settings(p: argparse.ArgumentParser, args: argparse.Namespace) -> dict[str, Any]:
+    skip = {"project", "dry_run", "help"} | ({"eval_every", "eval_dataset", "eval_concurrency"} if args.no_eval else set())
+    return {
+        action.dest: getattr(args, action.dest)
+        for action in p._actions  # noqa: SLF001
+        if action.dest not in skip and getattr(args, action.dest, None) not in (None, False)
+    }
+
+
+def main() -> None:
+    p = parser()
+    args = p.parse_args()
     name = f"pokerbots-grpo-{datetime.now(UTC):%Y%m%d-%H%M%S}"
-    config = run_config(name, args.prefix, args.steps, args.lr, args.concurrency, args.cluster_id)
+    config = run_config(args, name)
     if args.dry_run:
+        print("This launch sets (everything else is AC2's default):")
+        for key, value in explicit_settings(p, args).items():
+            print(f"  {key} = {value}")
         print(json.dumps(config.to_json(), indent=1, default=str))
         return
     run = Client(project=args.project).train.run(config)

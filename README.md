@@ -342,13 +342,18 @@ OPSD (step 10); otherwise delete it once the eval finishes:
 ### 8. Train with RL (GRPO)
 
 ```bash
-uv run python rl/train.py --dry-run     # prints the full run configuration
+uv run python rl/train.py --dry-run     # what this launch sets, then the exact configuration
 uv run python rl/train.py               # prints {"train_id": "train_...", ...}
 ```
 
-The run trains `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train` with Dr. GRPO and a small KL penalty: 16 hands × 4
-attempts per step, 60 steps, a checkpoint every 10 steps. At step 0 and at every checkpoint, it also plays
-`pokerbots-select` as an in-run eval. Your harness plays every hand, so keep steps 4–5 running. The run names no
+The dry run starts with `This launch sets (everything else is AC2's default):` and lists every setting the script
+sends. By default that's the GRPO recipe: `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train`, Dr. GRPO with a small KL
+penalty (`kl_coef = 0.01`), 16 hands × 4 attempts per step, 60 steps, a checkpoint every 10 steps, thinking on, and
+an in-run eval on `pokerbots-select` at step 0 and every 10 steps. **Nothing else is overridden:** learning rate,
+response and context length, inference replicas and sampling concurrency are AC2's defaults. To change any of them,
+pass a flag (`uv run python rl/train.py --help` lists them all), for example
+`uv run python rl/train.py --lr 1e-6 --max-response-len 10000 --dry-run`, and check the dry run before launching.
+The harness already asks for at most 5,000 tokens per decision and 10,000 per cleanup turn on every call. Your harness plays every hand, so keep steps 4–5 running. The run names no
 grader, so AC2 asks your harness's sample grader for every reward.
 
 **Verify and watch:**
@@ -390,6 +395,10 @@ uv run python opsd/build_dataset.py --eval <that eval id> --dataset pokerbots-op
 uv run python opsd/train.py --dataset pokerbots-opsd-train --dry-run
 uv run python opsd/train.py --dataset pokerbots-opsd-train
 ```
+
+As in step 8, the dry run lists what the launch sets: 20 steps of 64 decisions, a checkpoint every 10, thinking on,
+plus what offline mode requires (one sample per task, no inference replicas, no in-run eval). Learning rate and
+lengths are AC2's defaults unless you pass `--lr`, `--max-response-len` or `--max-total-len`.
 
 The builder prints how many decisions it kept (`"tasks": ...`). Training prints a `train_id`. Delete the base
 deployment when you're done with it (step 7). Evaluate an OPSD checkpoint exactly as in step 9; the harness never

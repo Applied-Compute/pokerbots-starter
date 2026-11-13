@@ -72,12 +72,21 @@ def test_opsd_builder_makes_one_hinted_task_per_clean_decision() -> None:
     assert "hint" not in json.dumps([i.model_dump(mode="json") for i in task.input])  # only the teacher sees it
 
 
-def test_training_configs_build() -> None:
+def test_training_configs_send_only_explicit_settings() -> None:
+    """Unset flags are not sent, so AC2 keeps its defaults; a flag that is set shows up in the configuration."""
     spec = importlib.util.spec_from_file_location("rl_train", ROOT / "rl" / "train.py")
     grpo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(grpo)
-    config = grpo.run_config("n").to_json()
+    config = grpo.run_config(grpo.parser().parse_args([]), "n").to_json()
     text = json.dumps(config, default=str)
     assert "dr-grpo" in text and "pokerbots-train" in text and "pokerbots-select" in text
-    opsd = json.dumps(opsd_train.run_config("n", "d").to_json(), default=str)
-    assert "offline" in opsd and '"num_train_steps": 20' in opsd
+    assert "learning_rate" not in text and "max_response_len" not in text and "rollout" not in config["experiment_cfg"]
+    tuned = grpo.run_config(grpo.parser().parse_args(["--lr", "1e-6", "--max-response-len", "10000"]), "n").to_json()
+    assert tuned["experiment_cfg"]["trainer"]["learning_rate"] == 1e-6
+    assert tuned["experiment_cfg"]["rollout"]["max_response_len"] == 10000
+
+    opsd = opsd_train.run_config(opsd_train.parser().parse_args(["--dataset", "d"]), "n").to_json()
+    text = json.dumps(opsd, default=str)
+    assert "offline" in text and '"num_train_steps": 20' in text
+    assert "learning_rate" not in text and "max_response_len" not in text
+    assert opsd["experiment_cfg"]["rollout"] == {"n_inference_replicas": 0}

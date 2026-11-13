@@ -1,0 +1,50 @@
+[
+ {
+  "type": "function",
+  "name": "submit_action",
+  "description": "Submit your action for this turn. Call it exactly once, after you have finished reasoning.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "action": {
+     "type": "string",
+     "enum": [
+      "fold",
+      "check",
+      "call",
+      "bet",
+      "raise"
+     ]
+    },
+    "amount": {
+     "type": "integer",
+     "description": "Required for bet and raise: the total you will have committed on this street."
+    },
+    "say": {
+     "type": "string",
+     "description": "Optional table talk, shown to every player with your action. At most 70 characters are kept, after the table reduces it to lowercase letters, digits, spaces and . , ! ? - : ;"
+    }
+   },
+   "required": [
+    "action"
+   ]
+  }
+ },
+ {
+  "type": "function",
+  "name": "update_scratchpad",
+  "description": "Replace your private scratchpad with `contents` (at most 5000 characters; longer is cut off). Call it exactly once, only when asked after a hand; during a hand it makes your turn invalid.",
+  "parameters": {
+   "type": "object",
+   "properties": {
+    "contents": {
+     "type": "string",
+     "description": "The scratchpad's full new contents."
+    }
+   },
+   "required": [
+    "contents"
+   ]
+  }
+ }
+]

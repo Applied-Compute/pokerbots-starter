@@ -28,7 +28,7 @@ def test_splits_share_no_deal_and_cycle_every_seat() -> None:
     assert params["seats"] == 6 and params["opponent_model"] == "my-project/opponent" and params["ev_labels"]
     assert params["opponent_api"] == "responses" and params["opponent_reasoning_effort"] == "medium"
     assert params["preset"] == "event" and built["p-table-smoke"][0].env_params["preset"] == "event"
-    assert params["chat_template_kwargs"] == {"enable_thinking": True}
+    assert params["total_hands"] == 1 and "chat_template_kwargs" not in params  # thinking comes from the preset
     assert "policy_seats" not in built["p-table-smoke"][0].env_params  # every seat is the evaluated model
 
 
@@ -62,12 +62,12 @@ def test_opsd_builder_makes_one_hinted_task_per_clean_decision() -> None:
         }
 
     tasks, stats = build_dataset.decision_tasks({"trace_id": "t", "spans": [span(1, good), span(2, bad)]}, "hint", 100)
-    assert stats == {"decisions": 2, "kept": 1, "format": 1, "truncated": 0}
+    assert stats == {"decisions": 2, "kept": 1, "cleanup": 0, "format": 1, "truncated": 0}
     (task,) = tasks
     (selection,) = task.opsd_hint_selections
     assert len(task.input) == 4 and selection.rollout_prefix_len == 2
     assert selection.mutation.item_boundary == 1 and selection.mutation.action == "append_to_previous_item"
-    assert task.env_params["tools"][0]["name"] == "submit_action"
+    assert [t["name"] for t in task.env_params["tools"]] == ["submit_action", "update_scratchpad"]
     assert set(task.env_params["tools"][0]["parameters"]["properties"]) == {"action", "amount", "say"}
     assert "hint" not in json.dumps([i.model_dump(mode="json") for i in task.input])  # only the teacher sees it
 

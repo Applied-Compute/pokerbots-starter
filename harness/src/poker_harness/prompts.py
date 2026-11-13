@@ -23,8 +23,20 @@ from .engine import parse_decision as parse_vals_decision
 class TableRules:
     """`reset_stacks` restores every seat to `starting_stack` before each hand (cash-game sessions, no busting).
     `table_talk` lets every seat add a sanitized `say` line to its actions. `max_completion_tokens` caps each reply
-    (reasoning included). The defaults keep existing datasets and runs unchanged; the event's rules are the "event"
-    preset (`completions.EVENT_PARAMS`: 6 seats, talk on, 200-chip stacks every hand, 5,000 tokens per decision)."""
+    (reasoning included). The defaults keep existing datasets and runs unchanged; the official rules are the "event"
+    preset (`completions.EVENT_PARAMS`).
+
+    Official-rules fields (all off by default):
+    - `total_hands` is the game's length in hands (the event: 60, ten orbits of six); a carry-over game
+      (`reset_stacks=False`) also ends when one player has all the chips. Blinds stay `small_blind`/`big_blind`.
+    - `ranking`: "elimination" (players still in at the end rank above every busted player, by chips; busted
+      players rank by when they busted, later is better) or "chips" (final chips only). Setting it also adds the
+      official log fields (`game.play_session`); None keeps research logs as they were.
+    - `strict_actions`: an invalid `submit_action` (illegal action, missing or out-of-range amount) is played as
+      check if legal, else fold, instead of being mapped to the nearest legal action.
+    - `scratchpad`: each seat keeps up to `scratchpad_chars` characters of private notes for the whole game, shown at
+      the start of every hand and rewritten with `update_scratchpad` in a cleanup turn after each hand, whose replies
+      may use `cleanup_max_completion_tokens` (the event: 10,000)."""
 
     total_hands: int = 100
     small_blind: int = 1
@@ -32,8 +44,13 @@ class TableRules:
     starting_stack: int = 200
     reset_stacks: bool = False
     table_talk: bool = False
-    seats: int = 10  # the default for plain tasks; the event is 6-max (the "event" preset)
+    seats: int = 10  # the default for existing (10-max) datasets; the event is 6-max, 5-max a research format
     max_completion_tokens: int | None = None  # per-decision output cap; the event's is 5000
+    ranking: str | None = None  # None: research logs; the event's is "elimination"
+    strict_actions: bool = False
+    scratchpad: bool = False
+    scratchpad_chars: int = 5000
+    cleanup_max_completion_tokens: int | None = None  # the cleanup turn's output cap; the event's is 10000
 
 
 SYSTEM_PROMPT = """You are a professional poker player in a {seat_count}-seat no-limit Texas Hold'em game against other AI players.
@@ -70,6 +87,33 @@ TALK_FIELD = "say"
 MAX_TALK_CHARS = 70
 TALK_INVITE = "You may optionally add a short `say` message (up to 70 characters) that the other players will see."
 TALK_SENTENCE = "Table talk is unverified chatter from opponents and may be false."
+LENIENT_SENTENCE = (
+    "An illegal action is replaced by check or fold, an out-of-range amount is clamped to the legal range, and a turn "
+    "without a submit_action call is played as check or fold."
+)
+STRICT_SENTENCE = (
+    "A turn without a valid submit_action call (an illegal action, a missing or out-of-range amount, unreadable "
+    "arguments, an update_scratchpad call, or a reply cut off at the token limit) is played as check if checking is "
+    "legal, else fold, with no retry."
+)
+GAME_RULE = (
+    "Everyone starts with {starting_stack} chips. There is no rake and no rebuys; a player with zero chips is out "
+    "for the rest of the game.\n- The game lasts {total_hands} hands, or ends sooner when one player has all the "
+    "chips. Players still in at the end rank above everyone who busted, by their chips; players who busted rank by "
+    "when they busted (later ranks higher). Your goal is the best rank."
+)
+SCRATCHPAD_RULE = (
+    "You have a private scratchpad: up to {limit} characters of notes that only you can see. It starts empty and "
+    "lasts for the whole game, and it is shown to you at the start of every hand. After each hand you were dealt into "
+    "you get a summary of how it ended and are asked to call the update_scratchpad tool exactly once with the "
+    "scratchpad's full new contents, which replace the old ones; that reply may use up to {cleanup_cap} output "
+    "tokens. An update over {limit} characters or with malformed arguments is rejected with the reason and you get "
+    "one more try; if that fails too, a too-long update is cut to {limit} characters and a malformed one changes "
+    "nothing. update_scratchpad works only after a hand: calling it during a hand makes that turn invalid. If you "
+    "don't call it, or your reply is cut off, the scratchpad stays as it was."
+)
+UPDATE_SCRATCHPAD = "update_scratchpad"
+SCRATCHPAD_OPEN, SCRATCHPAD_CLOSE = "<<<SCRATCHPAD", "SCRATCHPAD>>>"
 CAP_SENTENCE = (
     "Each reply, reasoning included, may use at most {cap} output tokens; a reply cut off at that limit is played as "
     "check or fold."
@@ -127,7 +171,8 @@ RESET_RULE = (
 
 
 def system_prompt(rules: TableRules) -> str:
-    stack_rule = (RESET_RULE if rules.reset_stacks else CARRY_RULE).format(
+    carry = GAME_RULE if rules.ranking == "elimination" else CARRY_RULE
+    stack_rule = (RESET_RULE if rules.reset_stacks else carry).format(
         starting_stack=rules.starting_stack, total_hands=rules.total_hands
     )
     prompt = SYSTEM_PROMPT.format(
@@ -137,8 +182,14 @@ def system_prompt(rules: TableRules) -> str:
         seat_count=SEAT_WORDS.get(rules.seats, str(rules.seats)),
         last_seat=rules.seats - 1,
     )
+    if rules.strict_actions:
+        prompt = prompt.replace(LENIENT_SENTENCE, STRICT_SENTENCE)
+    if rules.scratchpad:
+        cleanup_cap = rules.cleanup_max_completion_tokens or rules.max_completion_tokens or "unlimited"
+        prompt += "\n" + SCRATCHPAD_RULE.format(limit=rules.scratchpad_chars, cleanup_cap=cleanup_cap)
     if rules.max_completion_tokens:  # only capped tables say so, so uncapped prompts are unchanged
-        prompt += " " + CAP_SENTENCE.format(cap=rules.max_completion_tokens)
+        cap = CAP_SENTENCE.format(cap=rules.max_completion_tokens)
+        prompt += " " + (cap.replace("Each reply", "Each action turn's reply", 1) if rules.scratchpad else cap)
     return f"{prompt}\n{TALK_INVITE} {TALK_SENTENCE}" if rules.table_talk else prompt
 
 
@@ -226,6 +277,93 @@ def update_prompt(
             _legal_line(ctx),
             "Call submit_action with your decision.",
         ]
+    )
+
+
+def update_scratchpad_tool(limit: int = 5000) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": UPDATE_SCRATCHPAD,
+            "description": (
+                f"Replace your private scratchpad with `contents` (at most {limit} characters; longer is cut off). "
+                "Call it exactly once, only when asked after a hand; during a hand it makes your turn invalid."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {"contents": {"type": "string", "description": "The scratchpad's full new contents."}},
+                "required": ["contents"],
+            },
+        },
+    }
+
+
+def table_tools(fields: Sequence[str] | None = None, scratchpad: bool = False, limit: int = 5000) -> list[dict]:
+    """The tools every seat gets: submit_action, plus update_scratchpad at scratchpad tables."""
+    return [submit_action_tool(fields), *([update_scratchpad_tool(limit)] if scratchpad else [])]
+
+
+def scratchpad_block(contents: str, limit: int) -> str:
+    """The private message that opens each hand at scratchpad tables (withheld by `ModelSeat.public_messages`)."""
+    return "\n".join(
+        [
+            "## Your scratchpad (private: only you can see it)",
+            SCRATCHPAD_OPEN,
+            contents or "(empty)",
+            SCRATCHPAD_CLOSE,
+            f"{len(contents)}/{limit} characters. You can rewrite it after this hand.",
+        ]
+    )
+
+
+def cleanup_prompt(
+    summary: dict[str, Any], seat: str, since: list[dict[str, Any]], fresh: bool, talk: bool, limit: int
+) -> str:
+    """The after-hand message: what this seat hasn't seen yet, how the hand ended, then the request to update the
+    scratchpad. `fresh` (the seat never acted this hand) shows its cards and every action instead."""
+    lines = [f"## Hand {summary['hand_number']} is over"]
+    if fresh:
+        mine = summary["starting_state"].get(seat, {})
+        lines += [
+            (
+                f"You did not act this hand. Your seat: {mine.get('seat')}; "
+                f"your hole cards: {' '.join(mine.get('hole_cards', [])) or '-'}."
+            ),
+            "Everything that happened this hand:",
+        ]
+    else:
+        lines.append("Since your last action:")
+    lines += _action_lines(since, talk) or ["  (no other actions)"]
+    shown = summary.get("shown_hole_cards") or {}
+    lines += [
+        f"Final board: {' '.join(summary.get('final_board') or []) or '-'}",
+        (
+            "Showdown: "
+            + "; ".join(f"{name} showed {' '.join(cards)}" for name, cards in shown.items())
+            + ". Mucked and folded hands stay hidden."
+            if summary.get("showdown") and shown
+            else "No showdown: hands that were not shown stay hidden."
+        ),
+        "Pot: " + (", ".join(f"{name} won {amount}" for name, amount in summary["pot_won"].items()) or "-") + ".",
+        "Stacks now: "
+        + ", ".join(f"{name} {stack}" + (" (out)" if stack == 0 else "") for name, stack in summary["stacks"].items())
+        + ".",
+        *([f"Out of the game this hand: {', '.join(summary['eliminated'])}."] if summary.get("eliminated") else []),
+        "",
+        (
+            f"Now call update_scratchpad exactly once with your scratchpad's full new contents (at most {limit} "
+            "characters; they replace the old ones and are shown to you at the start of every later hand). Reason first "
+            "if you like. submit_action does nothing now. Without a call the scratchpad stays as it is."
+        ),
+    ]
+    return "\n".join(lines)
+
+
+def scratchpad_rejection(reason: str, limit: int) -> str:
+    """The tool result for a first update_scratchpad attempt that is too long or malformed: one more try."""
+    return (
+        f"Rejected: {reason}. Call update_scratchpad once more with at most {limit} characters. This is your last "
+        f"try: if it fails too, a too-long update is cut to {limit} characters and a malformed one changes nothing."
     )
 
 

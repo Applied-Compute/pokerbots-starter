@@ -29,6 +29,9 @@ Extension points (search for "EXTENSION POINT")
 2. `GRADER_PARAMS`: per-task knobs your reward reads from the dataset's `grader_params`.
 3. `artifacts`: anything you add to the reply is stored with each score row on AC2, for analysis.
 Keep failures at 0 and real hands above it, or a model can learn that failing pays.
+
+This grader scores chips only. On single-hand tasks the scratchpad starts blank and its after-hand update is never
+read, so nothing here rewards or exercises scratchpad use; how to train that is up to you.
 """
 
 from __future__ import annotations

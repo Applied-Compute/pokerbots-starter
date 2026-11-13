@@ -13,20 +13,33 @@ from typing import Any
 
 import httpx
 
-from .prompts import SUBMIT_ACTION, TableRules, submit_action_tool
+from .prompts import SUBMIT_ACTION, TableRules, table_tools
 from .seat import Completion
 
 logger = logging.getLogger("poker_harness.completions")
 
-# The event's table rules (decided 2026-11-12, cash-game style): 6-max, sanitized table talk on, every hand starts at
-# 200 chips (100 BB; Elo per game from net chips), and at most 5,000 output tokens per decision with no time limit. `env_params.preset = "event"`
-# applies them; any key the task sets itself wins. Plain tasks keep the old defaults (10 seats, talk off).
+# The official rules (final, 2026-11-13): 6-max with sanitized table talk; 200 chips each that carry over within the
+# game (no resets or rebuys; a seat at 0 is out) at blinds 1/2 all game; a game is 60 hands (ten full orbits) or ends
+# sooner when one player has all the chips, ranked by final chips with busted seats below every survivor in reverse
+# elimination order; an invalid submit_action or a reply cut at 5,000 output tokens is played as check, else fold,
+# with no retry; a 5,000-character private scratchpad per player, rewritten in a cleanup turn after each hand whose
+# reply may use 10,000 output tokens; thinking on. `env_params.preset = "event"` applies them; any key the task sets
+# itself wins. Plain tasks keep the old defaults (10 seats, talk off).
 EVENT_PARAMS: dict[str, Any] = {
     "seats": 6,
     "table_talk": True,
-    "reset_stacks": True,
+    "reset_stacks": False,
     "starting_stack": 200,
+    "small_blind": 1,
+    "big_blind": 2,
+    "total_hands": 60,
+    "ranking": "elimination",
+    "strict_actions": True,
+    "scratchpad": True,
+    "scratchpad_chars": 5000,
     "max_completion_tokens": 5000,
+    "cleanup_max_completion_tokens": 10000,
+    "thinking": True,
 }
 PRESETS: dict[str, dict[str, Any]] = {"event": EVENT_PARAMS}
 
@@ -55,15 +68,17 @@ def relay_completion(client: httpx.AsyncClient, base_url: str, api_key: str, par
     url = f"{base_url.rstrip('/')}/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}
     passthrough = ("reasoning_effort", "max_completion_tokens", "max_tokens", "temperature", "chat_template_kwargs")
-    tool = submit_action_tool(params.get("submit_fields"))
+    tools = _tools(params)
     extra = {k: params[k] for k in passthrough if k in params}
+    if "thinking" in params and "chat_template_kwargs" not in params:  # Qwen-style chat templates' switch
+        extra["chat_template_kwargs"] = {"enable_thinking": bool(params["thinking"])}
 
     async def complete(messages: list[dict[str, Any]]) -> Completion:
         # The relay serves the eval's configured model; this field only labels the request.
         body = {
             "model": params.get("model_label", "policy"),
             "messages": messages,
-            "tools": [tool],
+            "tools": tools,
             **extra,
         }
         for attempt in range(retries + 1):
@@ -139,13 +154,15 @@ def responses_completion(
     """A `complete(messages)` for models that need the Responses API for tools with reasoning, such as OpenAI reasoning models."""
     url = f"{base_url.rstrip('/')}/responses"
     headers = {"Authorization": f"Bearer {api_key}"}
-    function = submit_action_tool(params.get("submit_fields"))["function"]
-    tool = {
-        "type": "function",
-        "name": function["name"],
-        "description": function["description"],
-        "parameters": function["parameters"],
-    }
+    tools = [
+        {
+            "type": "function",
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "parameters": tool["function"]["parameters"],
+        }
+        for tool in _tools(params)
+    ]
     extra: dict[str, Any] = (
         {"reasoning": {"effort": params["reasoning_effort"]}} if "reasoning_effort" in params else {}
     )
@@ -153,7 +170,7 @@ def responses_completion(
         extra["max_output_tokens"] = int(params["max_completion_tokens"])
 
     async def complete(messages: list[dict[str, Any]]) -> Completion:
-        body = {"model": params["model_label"], "input": to_responses_input(messages), "tools": [tool], **extra}
+        body = {"model": params["model_label"], "input": to_responses_input(messages), "tools": tools, **extra}
         for attempt in range(retries + 1):
             try:
                 response = await client.post(url, json=body, headers=headers)
@@ -202,6 +219,17 @@ def responses_completion(
     return complete
 
 
+def _tools(params: dict[str, Any]) -> list[dict[str, Any]]:
+    limit = int(params.get("scratchpad_chars", 5000))
+    return table_tools(params.get("submit_fields"), bool(params.get("scratchpad")), limit)
+
+
+def cleanup_params(params: dict[str, Any]) -> dict[str, Any]:
+    """A seat's completion params for the after-hand cleanup turn: the cleanup cap instead of the action cap."""
+    cap = params.get("cleanup_max_completion_tokens")
+    return params | {"max_completion_tokens": cap} if cap else params
+
+
 def table_rules(params: dict[str, Any]) -> TableRules:
     return TableRules(
         total_hands=int(params.get("total_hands", 3)),
@@ -212,6 +240,13 @@ def table_rules(params: dict[str, Any]) -> TableRules:
         table_talk=bool(params.get("table_talk", False)),
         seats=int(params.get("seats", 10)),
         max_completion_tokens=int(params["max_completion_tokens"]) if params.get("max_completion_tokens") else None,
+        ranking=params.get("ranking"),
+        strict_actions=bool(params.get("strict_actions", False)),
+        scratchpad=bool(params.get("scratchpad", False)),
+        scratchpad_chars=int(params.get("scratchpad_chars", 5000)),
+        cleanup_max_completion_tokens=(
+            int(params["cleanup_max_completion_tokens"]) if params.get("cleanup_max_completion_tokens") else None
+        ),
     )
 
 
@@ -221,6 +256,11 @@ def rules_output(rules: TableRules) -> dict[str, Any]:
         "table_talk": False,
         "seats": 10,
         "max_completion_tokens": None,
+        "ranking": None,
+        "strict_actions": False,
+        "scratchpad": False,
+        "scratchpad_chars": 5000,
+        "cleanup_max_completion_tokens": None,
     }  # left out at their defaults, so 10-max talk-off outputs are unchanged
     return {k: v for k, v in asdict(rules).items() if k not in defaults or v != defaults[k]}
 
@@ -238,6 +278,10 @@ def opponent_params(params: dict[str, Any]) -> dict[str, Any]:
         opponent["reasoning_effort"] = params["opponent_reasoning_effort"]
     if "opponent_thinking" in params:
         opponent["chat_template_kwargs"] = {"enable_thinking": bool(params["opponent_thinking"])}
-    if "max_completion_tokens" in params:  # the per-decision cap binds every seat
-        opponent["max_completion_tokens"] = params["max_completion_tokens"]
+    if "thinking" in params and "opponent_thinking" not in params:
+        opponent["chat_template_kwargs"] = {"enable_thinking": bool(params["thinking"])}
+    # the table's rules bind every seat
+    for key in ("max_completion_tokens", "cleanup_max_completion_tokens", "scratchpad", "scratchpad_chars"):
+        if key in params:
+            opponent[key] = params[key]
     return opponent

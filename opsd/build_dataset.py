@@ -7,11 +7,12 @@
      reply base actually wrote (reasoning, text and its `submit_action` call);
    - `opsd_hint_selections`: one selection at the end of the prompt (`rollout_prefix_len`) that appends the hint to
      the system message (`append_to_previous_item` at item boundary 1). Only the teacher sees it;
-   - `env_params.tools`: the `submit_action` schema the model saw. Training refuses a transcript with tool calls
-     unless the tools are listed here.
+   - `env_params.tools`: the tool schemas the model saw (`submit_action` and `update_scratchpad`, from tools.json).
+     Training refuses a transcript with tool calls unless the tools are listed here.
 3. Upload as a `hinted` dataset.
 
-Keep only clean decisions: exactly one `submit_action` call and a reply under the token cap. Use train deals only.
+Keep only clean decisions: exactly one `submit_action` call and a reply under the token cap. The after-hand
+`update_scratchpad` turns are skipped. Use train deals only.
 
     uv run python opsd/build_dataset.py --eval eval_xxx --dataset vals-poker-6max-opsd-train --dry-run
 """
@@ -27,36 +28,16 @@ from pathlib import Path
 from ac2.runtime import FunctionCall, HintedTask, HintMutation, HintSelection, Item, Tool
 from ac2.sdk import Client
 from pydantic import TypeAdapter
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hint import HINT, SEPARATOR  # noqa: E402
 
 ITEMS = TypeAdapter(list[Item])
 SUBMIT = "submit_action"
-# The harness's submit_action tool as the model saw it: the dataset's fields (`submit_fields: ["action", "amount"]`)
-# plus `say`, which the harness adds at talk-on tables. It must match what the model saw, field for field.
-SUBMIT_TOOL = Tool(
-    name=SUBMIT,
-    description="Submit your action for this turn. Call it exactly once, after you have finished reasoning.",
-    parameters={
-        "type": "object",
-        "properties": {
-            "action": {"type": "string", "enum": ["fold", "check", "call", "bet", "raise"]},
-            "amount": {
-                "type": "integer",
-                "description": "Required for bet and raise: the total you will have committed on this street.",
-            },
-            "say": {
-                "type": "string",
-                "description": (
-                    "Optional table talk, shown to every player with your action. At most 70 characters are kept, "
-                    "after the table reduces it to lowercase letters, digits, spaces and . , ! ? - : ;"
-                ),
-            },
-        },
-        "required": ["action"],
-    },
-)
+SCRATCHPAD = "update_scratchpad"
+# The tools every seat sees at an event table: submit_action (with `say`, since talk is on) and update_scratchpad.
+# They must match what the model saw, field for field; tools.json is generated from the harness and a harness test
+# checks it.
+TOOLS = [Tool.model_validate(tool).model_dump() for tool in json.loads((Path(__file__).parent / "tools.json").read_text())]
 
 
 def decision_tasks(trace: dict, hint: str, max_tokens: int) -> tuple[list[HintedTask], dict[str, int]]:
@@ -65,12 +46,15 @@ def decision_tasks(trace: dict, hint: str, max_tokens: int) -> tuple[list[Hinted
         (s for s in trace["spans"] if s["name"] == "get_completion" and s["status"] == "OK"),
         key=lambda s: s["start_time"],
     )
-    stats = {"decisions": len(spans), "kept": 0, "format": 0, "truncated": 0}
+    stats = {"decisions": len(spans), "kept": 0, "cleanup": 0, "format": 0, "truncated": 0}
     tasks = []
     for span in spans:
         prompt = ITEMS.validate_json(span["input"])
         reply = ITEMS.validate_json(span["output"])
         calls = [item for item in reply if isinstance(item, FunctionCall)]
+        if calls and calls[0].name == SCRATCHPAD:  # the after-hand cleanup turn, not a poker decision
+            stats["cleanup"] += 1
+            continue
         if len(calls) != 1 or calls[0].name != SUBMIT:
             stats["format"] += 1
             continue
@@ -80,7 +64,7 @@ def decision_tasks(trace: dict, hint: str, max_tokens: int) -> tuple[list[Hinted
         tasks.append(
             HintedTask(
                 input=prompt + reply,
-                env_params={"tools": [SUBMIT_TOOL.model_dump()], "source_trace": trace["trace_id"]},
+                env_params={"tools": TOOLS, "source_trace": trace["trace_id"]},
                 opsd_hint_selections=[
                     HintSelection(
                         hint=hint,
@@ -108,7 +92,7 @@ def main() -> None:
     if not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         Client(project=args.project).traces.download(args.eval, path)
-    tasks, totals = [], {"decisions": 0, "kept": 0, "format": 0, "truncated": 0}
+    tasks, totals = [], {"decisions": 0, "kept": 0, "cleanup": 0, "format": 0, "truncated": 0}
     with path.open() as lines:
         for line in lines:
             built, stats = decision_tasks(json.loads(line), HINT, args.max_tokens)

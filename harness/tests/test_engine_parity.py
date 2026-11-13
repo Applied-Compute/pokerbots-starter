@@ -1,4 +1,5 @@
-"""`poker_harness.engine` plays exactly like Vals' original engine: byte-identical game logs on a fixed set of games.
+"""`poker_harness.engine` plays exactly like Vals' original engine: byte-identical game logs on a fixed set of games,
+including full games under the event's rules (carried stacks, strict actions, the scratchpad).
 
 The recorded digests (golden/engine_parity.json) were made on Vals' engine, so this runs anywhere. With
 VALS_ENGINE_SRC set, the second test also plays every game on Vals' engine live and compares the full logs.
@@ -25,7 +26,10 @@ def test_the_recorded_games_cover_every_case() -> None:
     assert {s["reset"] for s in SPECS} == {False, True}
     for key in ("action_fold", "action_check", "action_call", "action_bet", "action_raise"):
         assert covered[key] > 100, key
-    for key in ("all_in_hands", "side_pot_hands", "split_pot_hands", "fallbacks", "talk_lines"):
+    for key in ("all_in_hands", "side_pot_hands", "split_pot_hands", "fallbacks", "talk_lines", "busted_seats"):
+        assert covered[key] > 10, key
+    assert sum(1 for s in SPECS if s.get("event")) >= 5  # full event games: 60 hands, busting, strict, scratchpad
+    for key in ("cleanup_updated", "cleanup_unchanged", "cleanup_attempt_too_long", "cleanup_attempt_malformed"):
         assert covered[key] > 10, key
 
 

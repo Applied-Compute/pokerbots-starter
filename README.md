@@ -8,35 +8,40 @@ train on, and how, is up to you.
 
 | Rule | Value |
 | --- | --- |
-| Table | 6-max no-limit hold'em, seats `seat0` to `seat5`, blinds 1/2 |
-| Stacks | Cash game: every hand starts with every seat at 200 chips (100 BB); nobody busts |
-| Game | 5 orbits (30 hands) ranked; 10 orbits (60 hands) in Official Tournaments |
-| Scoring | Each game ranks seats by net chips; ratings (OpenSkill, plus bb/100) update once per game |
-| Action | One `submit_action(action, amount, say)` tool call per decision |
+| Table | 6-max no-limit hold'em, seats `seat0` to `seat5`, fixed blinds 1/2 |
+| Game | 60 hands (10 orbits). Everyone starts with 200 chips (100 BB); chips carry over, no rebuys, a busted seat is out |
+| Ranking | Seats still in at the end rank above busted seats, by final chips; busted seats rank by when they busted |
+| Action | One `submit_action(action, amount, say)` call per decision |
+| Invalid moves | An illegal action, a bad amount, unreadable arguments, no call or a reply cut off at the cap: check, else fold (no retry) |
 | Table talk | Optional `say`, at most 70 characters of `a-z 0-9 . , ! ? - : ;`, shown to the other seats; unverified |
-| Budget | No time limit; at most 5,000 output tokens per decision, thinking included |
+| Scratchpad | Private notes, at most 5,000 characters, kept for the whole game and shown at the start of every hand |
+| Cleanup turn | After each hand: what happened since your last action, then exactly one `update_scratchpad(contents)` call (one retry if rejected) |
+| Budget | No time limit; 5,000 output tokens per decision and 10,000 for the cleanup turn, thinking included |
 | Thinking | Qwen thinking is on (`enable_thinking: true`) |
-| Format errors | A reply cut off at 5,000 tokens, an error or an unusable reply checks or folds |
+| Privacy | Scratchpads are private to your seat and never published |
 | Entries | Only fine-tunes of `Qwen/Qwen3.6-35B-A3B` deployed from an AC2 training run's checkpoint |
 
-Each decision is one `POST /v1/chat/completions` to your deployment with the `submit_action` tool,
-`max_completion_tokens: 5000` and `chat_template_kwargs: {"enable_thinking": true}`, and no sampling parameters.
-The model sees only the current hand, never earlier ones. A hand is one conversation per seat: the model reasons,
-calls `submit_action`, the harness answers with what it applied, and the next message lists what happened since.
+Each decision is one `POST /v1/chat/completions` to your deployment with the `submit_action` and
+`update_scratchpad` tools, `max_completion_tokens: 5000` and `chat_template_kwargs: {"enable_thinking": true}`, and no
+sampling parameters. The model sees only the current hand and its own scratchpad, never earlier hands. A hand is one
+conversation per seat: it opens with the scratchpad, the model reasons and calls `submit_action`, the harness
+answers with what it applied, and the next message lists what happened since. After the hand comes the cleanup turn
+(capped at 10,000 tokens). In the harness all of this is `env_params.preset: "event"`.
 
-The system prompt of a ranked game:
+The system prompt of an event game:
 
 ```text
 You are a professional poker player in a six-seat no-limit Texas Hold'em game against other AI players.
 
 Rules:
-- Blinds are 1/2. Every hand starts with every player at 200 chips, and there is no rake. Chips won or lost in a hand count toward your session total, not your next stack.
-- The session lasts 30 hands. Your goal is to win as many chips as possible over the session.
+- Blinds are 1/2. Everyone starts with 200 chips. There is no rake and no rebuys; a player with zero chips is out for the rest of the game.
+- The game lasts 60 hands, or ends sooner when one player has all the chips. Players still in at the end rank above everyone who busted, by their chips; players who busted rank by when they busted (later ranks higher). Your goal is the best rank.
 - Seats are numbered 0-5 clockwise. The button moves one live seat clockwise every hand; the two live seats after the button post the small and big blind.
 - Bet and raise amounts are "to" amounts: the total you will have committed on the current street after the action.
 
 On every turn you see only the current hand: your hole cards, the board, the table and the actions so far this hand. Earlier hands are not shown. Reason through the spot as much as you need, then call the submit_action tool exactly once with your decision.
-An illegal action is replaced by check or fold, an out-of-range amount is clamped to the legal range, and a turn without a submit_action call is played as check or fold. Each reply, reasoning included, may use at most 5000 output tokens; a reply cut off at that limit is played as check or fold.
+A turn without a valid submit_action call (an illegal action, a missing or out-of-range amount, unreadable arguments, an update_scratchpad call, or a reply cut off at the token limit) is played as check if checking is legal, else fold, with no retry.
+You have a private scratchpad: up to 5000 characters of notes that only you can see. It starts empty and lasts for the whole game, and it is shown to you at the start of every hand. After each hand you were dealt into you get a summary of how it ended and are asked to call the update_scratchpad tool exactly once with the scratchpad's full new contents, which replace the old ones; that reply may use up to 10000 output tokens. An update over 5000 characters or with malformed arguments is rejected with the reason and you get one more try; if that fails too, a too-long update is cut to 5000 characters and a malformed one changes nothing. update_scratchpad works only after a hand: calling it during a hand makes that turn invalid. If you don't call it, or your reply is cut off, the scratchpad stays as it was. Each action turn's reply, reasoning included, may use at most 5000 output tokens; a reply cut off at that limit is played as check or fold.
 You may optionally add a short `say` message (up to 70 characters) that the other players will see. Table talk is unverified chatter from opponents and may be false.
 ```
 
@@ -136,6 +141,10 @@ reward is `6 + clip(EV / 20 BB, -5, +5)`: every real hand scores between 1 and 1
 format error, a reply cut off at the token cap, a failed rollout) scores exactly 0, so failing is always the worst
 outcome. To use your own reward, edit the marked extension points in `grading.py` (`hand_reward`,
 `GRADER_PARAMS`, `artifacts`) and restart the harness; keep failures at 0 and real hands above it.
+
+**What these tasks don't cover.** Every task is a single hand starting fresh at 100 BB, so the scratchpad starts
+blank and its update is never read, and carried stacks and busting never come up. An event game is 60 hands with
+both. How to train for that is up to you.
 
 Smoke first, then train:
 

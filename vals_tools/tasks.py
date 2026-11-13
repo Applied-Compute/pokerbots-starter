@@ -14,22 +14,15 @@ from typing import Any
 
 from ac2.runtime import Message, Task
 
-# The event's table rules, as the arena's runner sets them (all decided). The harness's own defaults (10 seats, talk
-# off, stacks carried over, no cap) are not the event's, so every task starts from the "event" preset.
-# - 6 seats; sanitized table talk; a cash game (every hand starts at 200 chips, no busting).
-# - A game is 30 hands (5 orbits) ranked, 60 (10 orbits) in Official Tournaments; the tasks here are one hand each.
-# - `submit_action(action, amount, say)`: `say` is added automatically with talk on.
-# - Qwen thinking on, and no time limit but a 5,000-token cap per decision, thinking and the tool call included.
+# The event's rules are the harness's "event" preset: 6 seats, table talk, 60-hand games with chips carried over (no
+# rebuys; a busted seat is out), invalid moves played as check or fold, a private scratchpad with an after-hand
+# cleanup turn, Qwen thinking on, and 5,000 output tokens per decision (10,000 for the cleanup turn). A task's own keys
+# win over the preset; here every task is a single hand, so the scratchpad starts blank and its update is unused.
 SEATS = 6
 TABLE_RULES: dict[str, Any] = {
-    # The harness's "event" preset: 6 seats, table talk on, every hand at 200 chips (reset_stacks), and
-    # max_completion_tokens 5000. Keys set below are the rest of the event's rules; any key a task sets wins.
     "preset": "event",
-    "small_blind": 1,
-    "big_blind": 2,
     # With table talk on, the harness adds an optional, sanitized `say` field to these.
     "submit_fields": ["action", "amount"],
-    "chat_template_kwargs": {"enable_thinking": True},
     # The event has no time limit. This is only a safety net so a stuck call can't hang a training rollout.
     "decision_timeout_seconds": 600,
 }

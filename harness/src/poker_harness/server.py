@@ -35,6 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .completions import (
     DEFAULT_DECISION_TIMEOUT_SECONDS,
     GATEWAY_URL,
+    cleanup_params,
     opponent_params,
     relay_completion,
     responses_completion,
@@ -118,8 +119,13 @@ def _bounded(log: dict[str, Any]) -> dict[str, Any]:
     trimmed = json.loads(json.dumps(log))
     for hand in trimmed["hands"]:
         for action in hand["actions"]:
-            for key in ("reasoning", "read", "raw_output"):
+            for key in ("reasoning", "read", "raw_output", "private"):
                 action["model_response"].pop(key, None)
+    if len(json.dumps(trimmed)) > MAX_OUTPUT_BYTES:  # scratchpad tables: drop the cleanup turns' text, keep the pads
+        for seat in (trimmed.get("private") or {}).values():
+            for hand in seat.get("hands", {}).values():
+                for key in ("prompt", "output", "update_calls"):
+                    (hand.get("cleanup") or {}).pop(key, None)
     return trimmed
 
 
@@ -179,6 +185,17 @@ def create_app(
                     if params.get("opponent_model")
                     else policy_complete
                 )
+                # The after-hand cleanup turn has its own output cap (`cleanup_max_completion_tokens`).
+                policy_cleanup = relay_completion(
+                    relay_client, request.ac_api_url, request.ac_api_key, cleanup_params(params)
+                )
+                opponent_cleanup = (
+                    opponent_api(
+                        opponent_client, opponent_url, opponent_key or "", cleanup_params(opponent_params(params))
+                    )
+                    if params.get("opponent_model")
+                    else policy_cleanup
+                )
                 players = [
                     ModelSeat(
                         f"seat{i}",
@@ -186,6 +203,7 @@ def create_app(
                         rollout.rules,
                         model="ac2/policy" if i in policy else f"opponent/{params.get('opponent_model', 'policy')}",
                         timeout_seconds=decision_timeout if i in policy else opponent_timeout,
+                        cleanup_complete=policy_cleanup if i in policy else opponent_cleanup,
                     )
                     for i in range(seats)
                 ]

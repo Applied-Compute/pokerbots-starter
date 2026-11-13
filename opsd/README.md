@@ -35,11 +35,12 @@ becomes one task:
 - `opsd_hint_selections`: one `HintSelection` with `rollout_prefix_len` at the end of the prompt and
   `HintMutation(item_boundary=1, action="append_to_previous_item")`, which appends the hint to the system message
   for the teacher only;
-- `env_params.tools`: the `submit_action` tool schema. **Training rejects a transcript with tool calls unless its
-  tools are listed here.**
+- `env_params.tools`: the tool schemas the model saw, `submit_action` and `update_scratchpad` ([`tools.json`](tools.json),
+  generated from the harness and checked by a harness test). **Training rejects a transcript with tool calls unless
+  its tools are listed here.**
 
 The dataset is created with `required_types=["hinted"]`. Only clean decisions are kept: one `submit_action` call
-and a reply under the token cap.
+and a reply under the token cap. The after-hand `update_scratchpad` turns are skipped.
 
 ## What offline mode can and can't do
 

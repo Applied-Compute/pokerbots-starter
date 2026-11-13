@@ -8,6 +8,9 @@
   The run names no grader.
 - **Method:** Dr. GRPO (`RLConfig(advantage="dr-grpo")`) with a small KL penalty (`kl_loss_coef=0.01`), 16 hands per
   step with 4 samples each, learning rate 2e-6, 60 steps.
+- **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
+  In a single-hand task that update is never read, and the grader ignores it. Training caps every completion at
+  `max_response_len` (5,000), including that turn.
 - **Checkpoints and eval:** a checkpoint every 10 steps, and a sidecar eval on `vals-poker-6max-select` at step 0
   (base) and every checkpoint.
 

@@ -78,6 +78,6 @@ def test_training_configs_build() -> None:
     spec.loader.exec_module(grpo)
     config = grpo.run_config("n").to_json()
     text = json.dumps(config, default=str)
-    assert "dr-grpo" in text and "vals-poker-6max-train" in text and "vals-poker-6max-select" in text
+    assert "dr-grpo" in text and "pokerbots-train" in text and "pokerbots-select" in text
     opsd = json.dumps(opsd_train.run_config("n", "d").to_json(), default=str)
     assert "offline" in opsd and '"num_train_steps": 20' in opsd

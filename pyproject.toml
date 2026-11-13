@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "vals-poker-team"
+name = "pokerbots"
 version = "0.1.0"
-description = "Starter AC2 project for the Vals poker event. Set name to your team's AC2 project name."
+description = "AC2 project for the Vals poker event (an empty stub: everything runs in the harness)."
 requires-python = ">=3.12"
 # Nothing here runs inside AC2: the self-hosted harness (harness/) plays and grades every hand. AC2 still installs
 # this project's wheel and needs a project version for training, so it stays dependency-free.
@@ -18,7 +18,7 @@ dev = ["ac2>=0.3.97", "pytest>=8.0.0"]
 package = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/vals_poker"]
+packages = ["src/pokerbots"]
 
 [[tool.uv.index]]
 name = "ac2"

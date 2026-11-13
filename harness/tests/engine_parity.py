@@ -2,7 +2,8 @@
 
 `games()` lists the fixed set: 6-max and 10-max, talk on and off, reset and carried stacks, with scripted players and
 fuzzing model seats (every action type, illegal and out-of-range requests, all-ins, table talk, text replies, errors),
-plus full event games (60 hands, carried stacks with busting, strict actions, the scratchpad and its cleanup turns).
+plus full 60-hand games under the event's rules (carried stacks with busting, strict actions, the scratchpad and its
+cleanup turns).
 `play(...)` plays one game and returns its log as canonical JSON (sorted keys, timing fields dropped), so two engines
 match only if every hand matches byte for byte.
 

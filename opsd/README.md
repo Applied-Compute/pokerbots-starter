@@ -11,20 +11,20 @@ toward the teacher's on replies the base model actually wrote.
 
 1. **Play base on the train deals** through the harness, served as an inference deployment:
    ```bash
-   uv run python -m vals_tools.eval --dataset vals-poker-6max-train --deployment <project>/<base-deployment>
+   uv run python -m vals_tools.eval --dataset pokerbots-train --deployment <project>/<base-deployment>
    ```
 2. **Build the hinted dataset** from that eval's traces ([`build_dataset.py`](build_dataset.py)):
    ```bash
-   uv run python opsd/build_dataset.py --eval <eval-id> --dataset vals-poker-6max-opsd-train --dry-run
-   uv run python opsd/build_dataset.py --eval <eval-id> --dataset vals-poker-6max-opsd-train
+   uv run python opsd/build_dataset.py --eval <eval-id> --dataset pokerbots-opsd-train --dry-run
+   uv run python opsd/build_dataset.py --eval <eval-id> --dataset pokerbots-opsd-train
    ```
 3. **Train** ([`train.py`](train.py)): 20 steps of 64 decisions at lr 2e-6, a checkpoint every 10.
    ```bash
-   uv run python opsd/train.py --dataset vals-poker-6max-opsd-train --dry-run
-   uv run python opsd/train.py --dataset vals-poker-6max-opsd-train
+   uv run python opsd/train.py --dataset pokerbots-opsd-train --dry-run
+   uv run python opsd/train.py --dataset pokerbots-opsd-train
    ```
 4. **Evaluate the student without the hint:** serve a checkpoint and run it through the harness on
-   `vals-poker-6max-eval`. The harness never shows the hint, so this measures what the weights learned.
+   `pokerbots-eval`. The harness never shows the hint, so this measures what the weights learned.
 
 ## The `HintedTask` contract
 
@@ -51,5 +51,5 @@ and a reply under the token cap. The after-hand `update_scratchpad` turns are sk
 
 ## Judge it
 
-Compare the student with base on `vals-poker-6max-eval`, both served the same way, paired per deal, with
+Compare the student with base on `pokerbots-eval`, both served the same way, paired per deal, with
 `python -m vals_tools.score`.

@@ -19,7 +19,7 @@ from .seat import Completion
 logger = logging.getLogger("poker_harness.completions")
 
 # The official rules (final, 2026-11-13): 6-max with sanitized table talk; 200 chips each that carry over within the
-# game (no resets or rebuys; a seat at 0 is out) at blinds 1/2 all game; a game is 60 hands (ten full orbits) or ends
+# game (no resets or rebuys; a seat at 0 is out) at blinds 1/2 all game; a game is 30 hands (five full orbits) or ends
 # sooner when one player has all the chips, ranked by final chips with busted seats below every survivor in reverse
 # elimination order; an invalid submit_action or a reply cut at 5,000 output tokens is played as check, else fold,
 # with no retry; a 5,000-character private scratchpad per player, rewritten in a cleanup turn after each hand whose
@@ -32,7 +32,7 @@ EVENT_PARAMS: dict[str, Any] = {
     "starting_stack": 200,
     "small_blind": 1,
     "big_blind": 2,
-    "total_hands": 60,
+    "total_hands": 30,
     "ranking": "elimination",
     "strict_actions": True,
     "scratchpad": True,

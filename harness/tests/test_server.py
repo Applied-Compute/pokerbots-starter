@@ -123,7 +123,7 @@ async def test_policy_seat_uses_relay_and_opponents_use_the_gateway(
         "seed": 99,
         "total_hands": 1,
         "policy_seats": [3],
-        "opponent_model": "vals-poker/vanilla",
+        "opponent_model": "my-project/vanilla",
         "opponent_thinking": False,
     }
     status, outputs = await play(app, {"input": [], "env_params": params})
@@ -135,7 +135,7 @@ async def test_policy_seat_uses_relay_and_opponents_use_the_gateway(
     assert len(opponent_requests) == len(actions) - len(policy_actions)
     assert {r["auth"] for r in relay_requests} == {"Bearer relay-key"}
     assert {r["auth"] for r in opponent_requests} == {"Bearer gateway-key"}
-    assert all(r["body"]["model"] == "vals-poker/vanilla" for r in opponent_requests)
+    assert all(r["body"]["model"] == "my-project/vanilla" for r in opponent_requests)
     assert all(r["body"]["chat_template_kwargs"] == {"enable_thinking": False} for r in opponent_requests)
     assert all(a["model_response"]["provider"] == "ac2" for a in policy_actions)
 
@@ -145,7 +145,7 @@ async def test_opponents_without_a_gateway_key_fail_the_rollout(
 ) -> None:
     monkeypatch.delenv("AC2_API_KEY", raising=False)
     app = create_app(relay_transport=httpx.ASGITransport(app=fake_relay([])), runs_dir=tmp_path)
-    params = {"seed": 1, "total_hands": 1, "policy_seats": [0], "opponent_model": "vals-poker/vanilla"}
+    params = {"seed": 1, "total_hands": 1, "policy_seats": [0], "opponent_model": "my-project/vanilla"}
     status, _ = await play(app, {"input": [], "env_params": params})
     assert status["status"] == "failed" and "AC2_API_KEY" in status["error_message"]
 

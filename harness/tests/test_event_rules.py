@@ -16,13 +16,13 @@ from poker_harness.server import create_app
 def test_the_event_preset_is_the_official_rules_and_explicit_keys_win() -> None:
     rules = table_rules(with_preset({"seed": 1, "preset": "event"}))
     assert (rules.seats, rules.table_talk, rules.reset_stacks, rules.starting_stack) == (6, True, False, 200)
-    assert (rules.small_blind, rules.big_blind, rules.total_hands, rules.ranking) == (1, 2, 60, "elimination")
+    assert (rules.small_blind, rules.big_blind, rules.total_hands, rules.ranking) == (1, 2, 30, "elimination")
     assert rules.strict_actions and rules.scratchpad and rules.scratchpad_chars == 5000
     assert (rules.max_completion_tokens, rules.cleanup_max_completion_tokens) == (5000, 10000)
     assert EVENT_PARAMS["thinking"] is True
     prompt = system_prompt(rules)
     assert "six-seat" in prompt and "numbered 0-5" in prompt and TALK_INVITE in prompt and "Blinds are 1/2." in prompt
-    assert "a player with zero chips is out" in prompt and "The game lasts 60 hands" in prompt
+    assert "a player with zero chips is out" in prompt and "The game lasts 30 hands" in prompt
     assert "played as check if checking is legal, else fold, with no retry" in prompt
     assert "private scratchpad" in prompt and "up to 10000 output tokens" in prompt and "at most 5000 output" in prompt
     assert table_rules(with_preset({"preset": "event", "seats": 10})).seats == 10
@@ -125,7 +125,13 @@ async def test_a_reply_cut_at_the_cap_is_played_afk_even_with_an_action(tmp_path
         assert not response["submitted_by_tool"] and action["action"]["type"] in ("check", "fold")
         assert response["error"] == "reply hit the 5000-token cap"
     for seat in outputs["log"]["private"].values():  # cleanup replies were cut too: nothing changes
-        assert seat["scratchpad"] == "" and seat["hands"]["1"]["cleanup"]["result"] == "unchanged"
+        assert seat["scratchpad"] == "" and seat["cleanups"] == {
+            "turns": 1,
+            "updated": 0,
+            "cut": 0,
+            "unchanged": 1,
+            "retried": 0,
+        }
 
 
 async def test_a_responses_reply_cut_at_the_cap_is_marked_truncated() -> None:

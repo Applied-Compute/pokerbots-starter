@@ -64,7 +64,7 @@ def summarize(rows: dict, base: dict | None = None) -> dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="vals-poker")
+    parser.add_argument("--project", default="pokerbots")
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--eval", help="a standalone eval")
     target.add_argument("--run", help="a training run; with --step, its sidecar eval at that step")

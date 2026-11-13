@@ -22,8 +22,8 @@ from vals_tools.tasks import SEATS, Opponents, datasets  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="vals-poker")
-    parser.add_argument("--prefix", default="vals-poker-6max")
+    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--prefix", default="pokerbots")
     parser.add_argument("--opponent-model", required=True, help="model name the harness calls for opponent seats")
     parser.add_argument("--opponent-api", choices=["responses", "chat"], default="responses")
     parser.add_argument("--opponent-effort", default="medium", help="reasoning effort; 'none' leaves it unset")

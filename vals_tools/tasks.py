@@ -14,7 +14,7 @@ from typing import Any
 
 from ac2.runtime import Message, Task
 
-# The event's rules are the harness's "event" preset: 6 seats, table talk, 60-hand games with chips carried over (no
+# The event's rules are the harness's "event" preset: 6 seats, table talk, 30-hand games with chips carried over (no
 # rebuys; a busted seat is out), invalid moves played as check or fold, a private scratchpad with an after-hand
 # cleanup turn, Qwen thinking on, and 5,000 output tokens per decision (10,000 for the cleanup turn). A task's own keys
 # win over the preset; here every task is a single hand, so the scratchpad starts blank and its update is unused.

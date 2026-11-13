@@ -7,7 +7,7 @@ tokens. No environment, grader or reward runs in training, and no inference engi
 Training has no poker eval: after the run, serve a checkpoint and play it through the harness, which never shows the
 hint, so that eval measures the student without it.
 
-    uv run python opsd/train.py --dataset vals-poker-6max-opsd-train --dry-run
+    uv run python opsd/train.py --dataset pokerbots-opsd-train --dry-run
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ def run_config(
         model=MODEL,
         name=name,
         description=f"Offline OPSD of a prompted strategy hint into {MODEL} (student without the hint), {dataset}.",
-        tags={"benchmark": "vals-poker", "method": "opsd", "dataset": dataset},
+        tags={"benchmark": "pokerbots", "method": "opsd", "dataset": dataset},
         experiment_cfg=ExperimentConfig(
             method=OPSDConfig(rollout_mode="offline"),
             step=StepConfig(
@@ -71,7 +71,7 @@ def run_config(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="vals-poker")
+    parser.add_argument("--project", default="pokerbots")
     parser.add_argument("--dataset", required=True, help="hinted dataset from build_dataset.py")
     parser.add_argument("--steps", type=int, default=STEPS)
     parser.add_argument("--lr", type=float, default=LEARNING_RATE)
@@ -79,7 +79,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    name = f"vals-poker-opsd-{datetime.now(UTC):%Y%m%d-%H%M%S}"
+    name = f"pokerbots-opsd-{datetime.now(UTC):%Y%m%d-%H%M%S}"
     config = run_config(name, args.dataset, args.steps, args.lr, args.cluster_id)
     if args.dry_run:
         print(json.dumps(config.to_json(), indent=1, default=str))

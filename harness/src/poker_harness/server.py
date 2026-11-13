@@ -112,20 +112,85 @@ class Rollout:
     task: asyncio.Task[None] | None = None
 
 
+FREE_TEXT = ("reasoning", "read", "raw_output")  # model text kept in research logs while they fit
+ESSENTIAL_RESPONSE = (
+    "model_name",
+    "provider",
+    "format_error",
+    "fallback_used",
+    "afk",
+    "afk_reason",
+    "error",
+    "truncated",
+    "submitted_by_tool",
+    "say",
+    "in_tokens",
+    "out_tokens",
+    "reasoning_tokens",
+)
+
+
+def _size(log: dict[str, Any]) -> int:
+    return len(json.dumps(log, separators=(",", ":")))
+
+
+def _compact_private(log: dict[str, Any]) -> None:
+    """In place: each action's private model text goes, and each seat's private section shrinks to its final
+    scratchpad plus counts of its cleanup outcomes. The full history stays in memory (harness-side grading) and in the
+    runs directory; a 30-hand scratchpad game's history alone is several MB, past what the connector carries."""
+    for hand in log["hands"]:
+        for action in hand["actions"]:
+            action["model_response"].pop("private", None)
+    for seat in (log.get("private") or {}).values():
+        cleanups = [h["cleanup"] for h in seat.pop("hands", {}).values() if h.get("cleanup")]
+        results = [c.get("result") for c in cleanups]
+        seat["cleanups"] = {
+            "turns": len(cleanups),
+            **{result: results.count(result) for result in ("updated", "cut", "unchanged")},
+            "retried": sum(len(c.get("attempts", [])) > 1 for c in cleanups),
+        }
+        seat["scratchpad_chars"] = len(seat.get("scratchpad", ""))
+
+
 def _bounded(log: dict[str, Any]) -> dict[str, Any]:
-    """Drop free text from model responses if the log would not fit through the connector."""
-    if len(json.dumps(log)) <= MAX_OUTPUT_BYTES:
+    """The game log as AC2 receives it from `collect_outputs`, under the connector's 1 MiB limit: private history
+    compacted (`_compact_private`), then, only while still too big, model free text dropped, the final scratchpads
+    dropped (their lengths stay), model responses cut to their essentials, and finally every action cut to the
+    move and its chips. Research logs that fit come back unchanged; grading reads the full log, not this."""
+    if "private" not in log and _size(log) <= MAX_OUTPUT_BYTES:
         return log
     trimmed = json.loads(json.dumps(log))
-    for hand in trimmed["hands"]:
-        for action in hand["actions"]:
-            for key in ("reasoning", "read", "raw_output", "private"):
+    _compact_private(trimmed)
+    actions = [a for hand in trimmed["hands"] for a in hand["actions"]]
+
+    def drop_free_text() -> None:
+        for action in actions:
+            for key in FREE_TEXT:
                 action["model_response"].pop(key, None)
-    if len(json.dumps(trimmed)) > MAX_OUTPUT_BYTES:  # scratchpad tables: drop the cleanup turns' text, keep the pads
+
+    def drop_scratchpads() -> None:
         for seat in (trimmed.get("private") or {}).values():
-            for hand in seat.get("hands", {}).values():
-                for key in ("prompt", "output", "update_calls"):
-                    (hand.get("cleanup") or {}).pop(key, None)
+            seat.pop("scratchpad", None)
+
+    def essential_responses() -> None:
+        for action in actions:
+            response = action["model_response"]
+            action["model_response"] = {k: response[k] for k in ESSENTIAL_RESPONSE if k in response}
+            if isinstance(response.get("error"), str):
+                action["model_response"]["error"] = response["error"][:200]
+
+    def bare_actions() -> None:
+        keep = ("timestep", "player", "seat", "street", "action", "put_in", "chip_change", "stack_after")
+        for action in actions:
+            flags = {k: action["model_response"][k] for k in ("format_error", "afk") if k in action["model_response"]}
+            bare = {k: action[k] for k in keep if k in action} | {"model_response": flags}
+            action.clear()
+            action.update(bare)
+
+    for step in (drop_free_text, drop_scratchpads, essential_responses, bare_actions):
+        if _size(trimmed) <= MAX_OUTPUT_BYTES:
+            break
+        step()
     return trimmed
 
 

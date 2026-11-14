@@ -111,7 +111,7 @@ def parser() -> argparse.ArgumentParser:
     g = p.add_argument_group("set by default (the GRPO recipe); change them with these flags")
     g.add_argument("--steps", type=int, default=60, help="training steps (default 60)")
     g.add_argument("--hands-per-step", type=int, default=16, help="tasks per step (default 16)")
-    g.add_argument("--samples-per-hand", type=int, default=4, help="attempts per task, the GRPO group (default 4)")
+    g.add_argument("--samples-per-hand", type=int, default=16, help="attempts per task, the GRPO group (default 16)")
     g.add_argument("--advantage", default="dr-grpo", help="advantage estimator (default dr-grpo)")
     g.add_argument("--kl-coef", type=float, default=0.01, help="KL penalty toward the base model; 0 turns it off")
     g.add_argument("--checkpoint-every", type=int, default=10, help="steps between checkpoints (default 10)")

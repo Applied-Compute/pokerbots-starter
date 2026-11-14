@@ -16,6 +16,24 @@
 The videos are in [`videos/`](videos/). On GitHub, open one and use **View raw** (or download it) if it doesn't play
 inline.
 
+> [!IMPORTANT]
+> **Be creative.** The training setup here is a starting point, and you can change all of it:
+>
+> - **Datasets:** build your own tasks in the format of [`vals_tools/tasks.py`](vals_tools/tasks.py): which deals,
+>   seats and positions, how many hands per task, which situations.
+> - **Opponents:** set per dataset, not in `rl/train.py`. `rl/make_dataset.py` takes `--opponent-model`,
+>   `--opponent-api` and `--opponent-effort`. Each task's `env_params` can set `opponent_model`, `opponent_api`,
+>   `opponent_reasoning_effort`, `opponent_thinking` and `opponent_timeout_seconds`, and list several
+>   `policy_seats` to put your model in more than one seat. The harness reaches any OpenAI-compatible server through
+>   `POKER_OPPONENT_BASE_URL` and `POKER_OPPONENT_API_KEY` (see [`harness/README.md`](harness/README.md)).
+> - **The harness itself, for training:** fork `harness/` and change the rules, the reward (`grading.py`), the prompts
+>   or the opponents as you like.
+>
+> **The arena always plays the official, unmodified harness in this repo's `harness/`,** with the event rules. Whatever
+> you train with, your model must still play correctly under those rules: one `submit_action` call per decision,
+> 5,000 tokens per decision and 10,000 for the cleanup turn, and the scratchpad. Check it with
+> `harness/play_local.py`, which plays under the official rules.
+
 Starter code for the Vals poker event on [AC2](https://docs.appliedcompute.com/). You train a model to play 6-max
 no-limit hold'em, deploy it, and enter it in the arena. This repo has:
 
@@ -51,7 +69,7 @@ already has (see [Your team org](#your-team-org)); every tool here defaults to i
 | Budget | No time limit. At most 5,000 output tokens per decision and 10,000 for the cleanup turn, thinking included |
 | Thinking | Qwen thinking is on (`enable_thinking: true`) |
 | Auto-pause | In ranked games, an entry whose recent decisions mostly fail (more than half of its last 40) sits out, its seats checking or folding, until you submit a deployment again. Not applied in Official Tournaments. |
-| Entries | Only fine-tunes of `Qwen/Qwen3.6-35B-A3B` deployed from one of your AC2 training run's checkpoints |
+| Entries | Deployments of `Qwen/Qwen3.6-35B-A3B`: the base model, or a fine-tune from one of your AC2 training runs' checkpoints |
 
 In the harness, all of this is one setting: `env_params.preset: "event"`.
 
@@ -224,7 +242,7 @@ RL run with `--no-eval` plus OPSD (6 + 4). Two RL runs don't fit.
 `cd harness && uv run pytest`), and local games against the house model (`harness/play_local.py`). See
 [While your training run is going](#while-your-training-run-is-going).
 
-**Timeline:** submit something early, even a first checkpoint, so you're on the leaderboard (the first rating lands
+**Timeline:** submit something early, even the base model or a first checkpoint, so you're on the leaderboard (the first rating lands
 about 15–25 minutes after you submit). Then iterate: train, evaluate against base, and resubmit when something is
 better.
 
@@ -523,10 +541,12 @@ shows the hint, so the eval measures what the weights learned. Details: [`opsd/R
 
 ### 11. Deploy your entry
 
-Your arena entry must be a deployment of one of your training run's checkpoints:
+Your arena entry is a deployment of `Qwen/Qwen3.6-35B-A3B`: a checkpoint from one of your training runs, or the
+base model itself:
 
 ```bash
 uv run python -m vals_tools.deploy --name entry --checkpoint <your best ckpt_...>
+uv run python -m vals_tools.deploy --name entry --model Qwen/Qwen3.6-35B-A3B      # or: the base model
 ```
 
 Note the printed `deployment_id` (`infer_...`). Keep this deployment running for as long as it's entered.
@@ -546,9 +566,10 @@ log to `harness/runs/`. `--opponents bots` uses scripted players instead, with n
 
 ### 12. Submit to the arena
 
-In the AC2 console, open **Vals Arena** in the sidebar. It lists your eligible deployments: running checkpoint
-deployments of `Qwen/Qwen3.6-35B-A3B` fine-tunes. Select `entry`, give the submission a name, and submit. To change
-your entry later, submit another deployment; the latest submission counts.
+In the AC2 console, open **Vals Arena** in the sidebar. It lists your eligible deployments: running deployments of
+`Qwen/Qwen3.6-35B-A3B`, the base model or a fine-tune from one of your training runs' checkpoints. Select `entry`,
+give the submission a name, and submit. To change your entry later, submit another deployment; the latest submission
+counts.
 
 **Verify:** the page shows your current entry and links to your team page on the arena site. Before your first
 game the arena sends your deployment one "Reply with OK." probe, and the team page shows whether it passed.

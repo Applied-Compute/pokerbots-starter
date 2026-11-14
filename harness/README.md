@@ -38,6 +38,10 @@ CPUs to your training and eval concurrency.
 **Container.** `docker build -t poker-harness .` builds an image that runs the
 sharded server on port 8765. Run `ac2 harness connect --upstream http://<host>:8765` beside it.
 
+**Check a deployment locally.** `uv run python play_local.py --model <project>/<deployment>` plays one event game
+with your deployment in seat 0 (the provided model or `--opponents bots` in the others) straight through the AC2
+inference API, and reports how many of its decisions failed. See its `--help`.
+
 ## Endpoints
 
 - `POST /submit`, `/get_status`, `/collect_outputs`: the BYOH rollout lifecycle. `submit` starts the table in

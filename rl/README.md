@@ -8,9 +8,10 @@
   The run names no grader.
 - **Method:** Dr. GRPO (`--advantage dr-grpo`) with a small KL penalty (`--kl-coef 0.01`), 16 hands per step
   (`--hands-per-step`) with 16 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
-- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`), about 8 GPUs in all.
+- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`). These are the training
+  run's own engines, 2 GPUs each (deployments are separate, 1 GPU each), so the run uses about 8 GPUs in all.
   AC2's own default for this model is 4 of each, 20 GPUs, more than a team's 10-GPU quota.
-- **Everything else is AC2's default** (learning rate, response and context length, sampling concurrency,
+- **Token budget:** see below. **Everything else is AC2's default** (learning rate, sampling concurrency,
   checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,
   then the exact configuration.
 - **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
@@ -31,14 +32,17 @@ uv run python -m vals_tools.eval --project <project> --dataset pokerbots-smoke -
 uv run python rl/train.py --project <project>
 ```
 
-`--concurrency` caps concurrent hands on your harness (default 64, one step). `--steps`, `--lr` and `--prefix`
+`--concurrency` caps concurrent hands on your harness. It's unset by default, so AC2 may send a whole step (16 hands
+× 16 attempts = 256 games) at once; `--concurrency 64` suits the default `SHARDS=4`. `--steps`, `--lr` and `--prefix`
 change the obvious things.
 
 ## Cost and capacity
 
-- **GPUs:** about 8 while running: 4 to train, 2 for the rollout replica, 2 for the in-run eval replica.
-- **Opponent calls:** every hand makes several opponent calls per seat, so 64 hands a step is a few hundred opponent
-  calls a step. Check your opponent endpoint's price and rate limits before a long run.
+- **GPUs:** about 8 while running: 4 to train, 2 for the rollout engine, 2 for the in-run eval engine (each of AC2's
+  training inference engines uses 2 GPUs for this model; deployments use 1).
+- **Opponent calls:** every hand makes several opponent calls per seat, so a 256-hand step is well over a thousand
+  opponent calls. The provided model allows about 60 requests per second for your org; check your own endpoint's
+  price and rate limits before a long run.
 - **Harness:** one shard handles a few dozen concurrent hands. Run enough shards (`SHARDS=`) for the run's
   concurrency plus its sidecar eval.
 

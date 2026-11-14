@@ -45,7 +45,7 @@ def _set(**values: Any) -> dict[str, Any]:
 
 
 def run_config(args: argparse.Namespace, name: str) -> RunConfig:
-    launch = _set(cluster_id=args.cluster_id, tensorboard_enabled=args.tensorboard or None)
+    launch = _set(tensorboard_enabled=args.tensorboard or None)  # AC2 places the run; teams can't pick a cluster
     return RunConfig(
         model=args.model,
         name=name,
@@ -82,7 +82,7 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--project", default="vals-hackathon")
     p.add_argument("--dataset", required=True, help="hinted dataset from build_dataset.py")
-    p.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B", help="base model (arena entries must fine-tune this one)")
+    p.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B", help="base model (arena entries are this model or fine-tunes of it)")
     p.add_argument("--dry-run", action="store_true", help="print the settings and configuration, submit nothing")
     g = p.add_argument_group("set by default (the OPSD recipe); change them with these flags")
     g.add_argument("--steps", type=int, default=20, help="training steps (default 20)")
@@ -96,7 +96,6 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--max-response-len", type=int, help="per-reply token limit")
     a.add_argument("--max-total-len", type=int, help="prompt plus reply token limit")
     a.add_argument("--keep-checkpoints", type=int, help="checkpoints to keep")
-    a.add_argument("--cluster-id")
     return p
 
 

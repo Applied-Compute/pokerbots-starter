@@ -80,7 +80,7 @@ def decision_tasks(trace: dict, hint: str, max_tokens: int) -> tuple[list[Hinted
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--project", default="vals-hackathon")
     parser.add_argument("--eval", required=True, help="base model's eval on the train deals")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--max-tokens", type=int, default=5_000, help="replies this long count as truncated (the event's cap)")

@@ -10,11 +10,14 @@ no-limit hold'em, deploy it, and enter it in the arena. This repo has:
 
 The examples are a starting point. What to train on, and how, is up to you.
 
-Every command below is meant to be copied as is. Commands use the AC2 project name **`pokerbots`** throughout; if you
-pick another name, pass `--project <name>` to every `uv run` command and use your name wherever `pokerbots` appears.
+Every command below is meant to be copied as is. They all use **`vals-hackathon`**, the AC2 project your team org
+already has (see [Your team org](#your-team-org)); every tool here defaults to it. Dataset names start with
+`pokerbots-`.
 
-**Contents:** [Event rules](#event-rules) · [How it works](#how-it-works) · [Setup](#setup) ·
-[Walkthrough](#walkthrough) (steps 1–12) · [Troubleshooting](#troubleshooting) · [Reference](#reference)
+**Contents:** [Event rules](#event-rules) · [Your team org](#your-team-org) · [How it works](#how-it-works) ·
+[Managing limited compute](#managing-limited-compute) · [Setup](#setup) · [Walkthrough](#walkthrough) (steps 1–12) ·
+[While your training run is going](#while-your-training-run-is-going) · [Troubleshooting](#troubleshooting) ·
+[Reference](#reference)
 
 ## Event rules
 
@@ -55,6 +58,30 @@ You may optionally add a short `say` message (up to 70 characters) that the othe
 
 </details>
 
+## Your team org
+
+When you first log in to the [AC2 console](https://platform.appliedcompute.com), your team's org already has:
+
+- **Your teammates**, all as org admins. Applied Compute manages membership; ask the organizers to add or remove
+  someone.
+- **A GPU quota of 10 GPUs** on the event's cluster (see [Managing limited compute](#managing-limited-compute)).
+- **A project called `vals-hackathon`.** It exists but has no code version yet; step 1 links this repo to it.
+- **A model deployment `vals-hackathon/ac-vals-model`**, an external model Applied Compute provides to every team.
+  This README uses it for the opponent seats and the smoke test, so you don't need your own model provider key.
+- **A Vals Arena page** in the console sidebar, where you submit your entry (step 12).
+
+### Projects
+
+A **project** is a named workspace inside your org. Everything you make lives in one: datasets, training runs and
+their checkpoints, evals, inference deployments, the project's code versions, and the BYOH **connector** that links
+your harness to AC2. There is **one connector per project**, so one harness serves one project at a time.
+
+The seeded `vals-hackathon` project is enough for most teams: put all your datasets, runs and deployments in it.
+You might make a second project to run a separately configured harness at the same time (it needs its own
+connector), or to keep an experiment's datasets and runs apart. To do that, copy this repo, set `[project].name` in
+its `pyproject.toml` to the new name, run `ac2 project init` there, and pass `--project <name>` to every `uv run`
+command. The GPU quota is per org, so a second project doesn't add GPUs.
+
 ## How it works
 
 ### The moving parts
@@ -64,7 +91,7 @@ If you're new to AC2, these are the pieces you'll touch:
 | Part | What it is |
 | --- | --- |
 | **Org** | Your team's AC2 organization. It holds your members, your GPU quota, and everything below. |
-| **Project** | A named workspace inside the org (here: `pokerbots`). Datasets, runs, deployments and checkpoints all live in a project. |
+| **Project** | A named workspace inside the org (here: `vals-hackathon`). Datasets, runs, deployments and checkpoints all live in a project. See [Projects](#projects). |
 | **Project version** | A snapshot of the project's code that AC2 installs on its machines for every run. Ours is an **empty stub** (`src/pokerbots/`): none of your code runs on AC2, because the harness runs on your machine. AC2 still needs a version to exist. |
 | **Dataset / task** | A dataset is a list of tasks. Here one task is one poker hand: a deck seed, which seat your model plays, who the opponents are, and the table rules (`env_params`). |
 | **Harness** | A small web server you run (`harness/`). Given a task, it deals the cards, asks every seat for its moves, and plays the game out. It also **grades** the game (the Grader API) with the sample grader. |
@@ -79,7 +106,7 @@ If you're new to AC2, these are the pieces you'll touch:
 ```text
  your machine                                   AC2 (cloud)
  ┌──────────────────────────────┐              ┌──────────────────────────────────────────────┐
- │ harness (+ shard router)     │              │ project "pokerbots"                          │
+ │ harness (+ shard router)     │              │ project "vals-hackathon"                     │
  │  plays games, grades them    │◀── requests ─│  datasets: one task per hand                 │
  │            ▲                 │              │  training run / eval: sends tasks            │
  │            │ local HTTP      │              │    to the harness, reads back scores         │
@@ -122,6 +149,35 @@ The RL example uses **GRPO**:
 - **Checkpoints.** Training saves the weights every few steps. Later checkpoints aren't automatically better, so
   you evaluate several and keep the best.
 
+## Managing limited compute
+
+Each team has a **10-GPU quota**. A job asks for its GPUs when it starts; if they'd take your org over the quota, it
+waits in the queue until enough GPUs are free. Approximate GPU use for `Qwen/Qwen3.6-35B-A3B` (from AC2's
+[Default GPUs](https://docs.appliedcompute.com/platform/training/configuration.md) table: 4 GPUs to train, 2 per
+inference or eval replica):
+
+| Job | GPUs (approx.) |
+| --- | --- |
+| RL run, as `rl/train.py` launches it (1 rollout replica + 1 in-run eval replica) | 8 (6 with `--no-eval`) |
+| Offline OPSD run (`opsd/train.py`) | 4 |
+| An inference deployment (the base model, a checkpoint, your arena entry) | 2 per replica |
+| An eval through your harness | 0 extra (it uses the deployment it plays) |
+
+So you can't run everything at once: an RL run plus one deployment already uses your 10 GPUs. AC2's own default
+replica counts for this model would ask for 20 GPUs per RL run, which is why `rl/train.py` sets 1 inference and 1 eval
+replica.
+
+- **Delete deployments when you're done with them:** `uv run python -m vals_tools.deploy --name <name> --delete`.
+  A deployment holds its GPUs until it's deleted, even when nothing calls it.
+- **Stop a run's in-run evals with it:** `ac2 train stop <train id> --stop-evals`. Without `--stop-evals`, attached
+  evals keep running.
+- **Check before you launch:** `--dry-run` on `rl/train.py` and `opsd/train.py` prints what the run will use,
+  including a GPU estimate.
+- **Keep few checkpoints, and delete the ones you don't need.** Checkpoint storage is limited: pass
+  `--keep-checkpoints <n>` to the training scripts, list them with `ac2 checkpoints list vals-hackathon <train id>`, and
+  delete one with `ac2 checkpoints delete <train id> <step> --format all --cluster all`.
+- **Smoke first.** Try a short run (`--steps 5`) before a long one, so a mistake costs minutes, not hours.
+
 ## Setup
 
 ### Prerequisites
@@ -132,7 +188,7 @@ The RL example uses **GRPO**:
   **Settings → API keys**.
 - **A machine that stays on** to run the harness during training (a VM, a cloud box, a container service). A
   laptop is fine for the smoke test only.
-- **A model provider key** (for example OpenAI) for the opponent seats, or another opponent model your org can call.
+- Optionally, **a model provider key** (for example OpenAI) if you want opponents other than the provided model.
 
 ### Install and log in
 
@@ -189,35 +245,39 @@ If `uv sync` can't download `ac2`, export `UV_INDEX_AC2_USERNAME=__token__` and
 uv run python -m vals_tools.doctor
 ```
 
-Expect `OK` lines for the SDK and CLI, then `FAIL ... project 'pokerbots' doesn't exist: run ac2 project init`.
-That's correct until step 1. If you see `can't reach AC2`, see [Troubleshooting](#troubleshooting).
+Expect `OK` lines for the SDK, the CLI, `project vals-hackathon is prj_...` and `model vals-hackathon/ac-vals-model`,
+then `FAIL project vals-hackathon has no code version yet: run ac2 project init`. That's correct until step 1. If you
+see `can't reach AC2`, see [Troubleshooting](#troubleshooting).
 
 **Every command below runs from the repo root** (`pokerbots-starter/`) unless it starts with `cd harness`.
 
 ## Walkthrough
 
-### 1. Create the AC2 project
+### 1. Link this repo to your project
 
 ```bash
 ac2 project init
 ```
 
-This registers the folder as project `pokerbots` (the name comes from `[project].name` in `pyproject.toml`) and
-pushes the empty stub as its first version. Expect:
+Your org already has project `vals-hackathon`, and `[project].name` in `pyproject.toml` is `vals-hackathon`, so this
+links the folder to that project and pushes the empty stub as its first version. Expect:
 
 ```text
-Created project pokerbots in AC2.
-the current directory is tracked as pokerbots.
+Project vals-hackathon already in AC2.
+the current directory is tracked as vals-hackathon.
 Pushed version <12-character hash> from the current directory
 ```
 
-**Verify:** `uv run python -m vals_tools.doctor` now prints `OK project pokerbots is prj_...`. **Write down the
-`prj_...` id**: steps 4 and 5 need it.
+**Verify:** `uv run python -m vals_tools.doctor` now prints `OK project vals-hackathon has a pushed version`, and no
+`FAIL` lines. **Write down the `prj_...` id** it prints: steps 4 and 5 need it.
 
-### 2. Create the opponent endpoint
+### 2. Check the opponent model
 
-The five other seats need a model. Store your provider key in the project, then register the model as an external
-endpoint called `opponent`:
+The five other seats in each hand need a model. Your org starts with one: `vals-hackathon/ac-vals-model`. The doctor
+checked it in step 1 (`OK model vals-hackathon/ac-vals-model is there`), and the datasets in step 3 use it by default.
+
+To play against a different model instead, register it as an external endpoint and pass it to step 3. For an OpenAI
+model:
 
 ```bash
 ac2 secrets put --key OPENAI_API_KEY --value <your OpenAI key>
@@ -225,17 +285,16 @@ ac2 inference external --name opponent --provider openai --model <model> \
   --base-url https://api.openai.com/v1 --protocol openai_responses
 ```
 
-`<model>` is any OpenAI model with tool calling. The command prints the endpoint's id (`infer_...`). Its name for
-the harness is `pokerbots/opponent`.
+Then add `--opponent-model vals-hackathon/opponent --opponent-api responses --opponent-effort medium` to both commands
+in step 3.
 
-**Verify:** `ac2 inference list | grep opponent` shows a line with `pokerbots`, `opponent` and status
-`configured`.
+**Verify:** `ac2 inference list | grep vals-hackathon` lists `ac-vals-model` (and `opponent` if you made one).
 
 ### 3. Upload the datasets
 
 ```bash
-uv run python rl/make_dataset.py --opponent-model pokerbots/opponent --dry-run
-uv run python rl/make_dataset.py --opponent-model pokerbots/opponent
+uv run python rl/make_dataset.py --dry-run
+uv run python rl/make_dataset.py
 ```
 
 The dry run prints each dataset's name, size and first task. The real run prints `pokerbots-train: 2000 tasks` and
@@ -250,7 +309,7 @@ so on:
 | `pokerbots-table-smoke` | 2 games of 3 hands | Smoke test with your model in every seat |
 
 Each task is a single hand that starts fresh at 100 BB, with your model in one seat (cycling through every
-position) and the opponent endpoint in the other five. The scratchpad starts empty and the cleanup turn still
+position) and the opponent model in the other five. The scratchpad starts empty and the cleanup turn still
 happens, so the model sees the event's tools and prompt.
 
 **Verify:** `uv run python -m vals_tools.doctor --datasets` prints `OK dataset ...` five times.
@@ -299,15 +358,15 @@ don't put them in `.env` or `ac2 config`, or your other commands will try to use
 uv run python -m vals_tools.doctor --datasets --harness http://127.0.0.1:8765
 ```
 
-Every line should be `OK`, ending with `OK a connector is connected to pokerbots`.
+Every line should be `OK`, ending with `OK a connector is connected to vals-hackathon`.
 
 ### 6. Smoke test
 
-Play two short games with the opponent model in every seat, then four hands with it as the trained seat:
+Play two short games with the provided model in every seat, then four hands with it as the trained seat:
 
 ```bash
-uv run python -m vals_tools.eval --dataset pokerbots-table-smoke --deployment pokerbots/opponent
-uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment pokerbots/opponent
+uv run python -m vals_tools.eval --dataset pokerbots-table-smoke --deployment vals-hackathon/ac-vals-model
+uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment vals-hackathon/ac-vals-model
 ```
 
 Each command prints `Logs: ac2 eval logs eval_...`, then the eval id (`eval_...`). Your harness terminal shows
@@ -326,11 +385,11 @@ uv run python -m vals_tools.deploy --name base --model Qwen/Qwen3.6-35B-A3B
 ```
 
 It prints the deployment's state until it's ready, then `probe: answered with submit_action(...)` and
-`{"deployment": "pokerbots/base", "deployment_id": "infer_..."}`. This can take several minutes. Then:
+`{"deployment": "vals-hackathon/base", "deployment_id": "infer_..."}`. This can take several minutes. Then:
 
 ```bash
-uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment pokerbots/base
-uv run python -m vals_tools.eval --dataset pokerbots-eval --deployment pokerbots/base
+uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment vals-hackathon/base
+uv run python -m vals_tools.eval --dataset pokerbots-eval --deployment vals-hackathon/base
 ```
 
 Save the second eval id: it's the **base eval** for every comparison. Keep the `base` deployment if you'll run
@@ -342,13 +401,19 @@ OPSD (step 10); otherwise delete it once the eval finishes:
 ### 8. Train with RL (GRPO)
 
 ```bash
-uv run python rl/train.py --dry-run     # prints the full run configuration
+uv run python rl/train.py --dry-run     # what this launch sets, then the exact configuration
 uv run python rl/train.py               # prints {"train_id": "train_...", ...}
 ```
 
-The run trains `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train` with Dr. GRPO and a small KL penalty: 16 hands × 4
-attempts per step, 60 steps, a checkpoint every 10 steps. At step 0 and at every checkpoint, it also plays
-`pokerbots-select` as an in-run eval. Your harness plays every hand, so keep steps 4–5 running. The run names no
+The dry run starts with `This launch sets (everything else is AC2's default):` and lists every setting the script
+sends. By default that's the GRPO recipe: `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train`, Dr. GRPO with a small KL
+penalty (`kl_coef = 0.01`), 16 hands × 4 attempts per step, 60 steps, a checkpoint every 10 steps, thinking on, an
+in-run eval on `pokerbots-select` at step 0 and every 10 steps, and 1 rollout and 1 eval replica, so the run fits
+your GPU quota (the dry run prints `GPUs while running: about 8`). **Nothing else is overridden:** learning rate,
+response and context length and sampling concurrency are AC2's defaults. To change any of them,
+pass a flag (`uv run python rl/train.py --help` lists them all), for example
+`uv run python rl/train.py --lr 1e-6 --max-response-len 10000 --dry-run`, and check the dry run before launching.
+The harness already asks for at most 5,000 tokens per decision and 10,000 per cleanup turn on every call. Your harness plays every hand, so keep steps 4–5 running. The run names no
 grader, so AC2 asks your harness's sample grader for every reward.
 
 **Verify and watch:**
@@ -368,8 +433,8 @@ Pick a checkpoint from the in-run evals on `pokerbots-select`, deploy it, and pl
 
 ```bash
 uv run python -m vals_tools.deploy --name step20 --checkpoint <ckpt_... from ac2 train checkpoints>
-uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment pokerbots/step20
-uv run python -m vals_tools.eval --dataset pokerbots-eval --deployment pokerbots/step20
+uv run python -m vals_tools.eval --dataset pokerbots-smoke --deployment vals-hackathon/step20
+uv run python -m vals_tools.eval --dataset pokerbots-eval --deployment vals-hackathon/step20
 uv run python -m vals_tools.score --eval <checkpoint eval id> --base <base eval id>
 ```
 
@@ -384,12 +449,16 @@ student is the same model without it, and training moves the student toward the 
 actually wrote. The hint in [`opsd/hint.py`](opsd/hint.py) is a generic example; write your own.
 
 ```bash
-uv run python -m vals_tools.eval --dataset pokerbots-train --deployment pokerbots/base   # base plays the train deals
+uv run python -m vals_tools.eval --dataset pokerbots-train --deployment vals-hackathon/base   # base plays the train deals
 uv run python opsd/build_dataset.py --eval <that eval id> --dataset pokerbots-opsd-train --dry-run
 uv run python opsd/build_dataset.py --eval <that eval id> --dataset pokerbots-opsd-train
 uv run python opsd/train.py --dataset pokerbots-opsd-train --dry-run
 uv run python opsd/train.py --dataset pokerbots-opsd-train
 ```
+
+As in step 8, the dry run lists what the launch sets: 20 steps of 64 decisions, a checkpoint every 10, thinking on,
+plus what offline mode requires (one sample per task, no inference replicas, no in-run eval). Learning rate and
+lengths are AC2's defaults unless you pass `--lr`, `--max-response-len` or `--max-total-len`.
 
 The builder prints how many decisions it kept (`"tasks": ...`). Training prints a `train_id`. Delete the base
 deployment when you're done with it (step 7). Evaluate an OPSD checkpoint exactly as in step 9; the harness never
@@ -414,18 +483,40 @@ your entry later, submit another deployment; the latest submission counts.
 **Verify:** the page shows your current entry and links to your team page on the arena site. Before your first
 game the arena sends your deployment one "Reply with OK." probe, and the team page shows whether it passed.
 
+## While your training run is going
+
+A run takes hours. Useful things to do meanwhile, without getting in its way (mind the [GPU quota](#managing-limited-compute)):
+
+- **Evaluate as you go.** Run evals on the base model and on earlier checkpoints (step 9), and judge them on held-out
+  deals (`pokerbots-eval`), not on the deals you picked them with.
+- **Build better datasets.** The ones here are single fresh hands at 100 BB. What to train on is up to you: other
+  seats and positions, synthetic situations, situations from the middle of a game. `vals_tools/tasks.py` shows the
+  task format the harness reads.
+- **Work on your reward.** Change the sample grader's extension points (`hand_reward`, `GRADER_PARAMS`, `artifacts` in
+  [`grading.py`](harness/src/poker_harness/grading.py)) and check them with `cd harness && uv run pytest`. Restart the
+  harness only between runs: the running run grades with whatever harness is up.
+- **Test harness changes locally** with scripted players, no model needed (`ScriptedPlayer` in
+  `poker_harness.engine`, as in `harness/tests/test_harness.py`), against a second harness on another port.
+- **Read what your model does:** traces in the AC2 platform (or `ac2 traces download <run or eval id>`) and the game
+  logs in `harness/runs/`.
+- **Watch the arena:** your games and their replays on [pokerbots.ac](https://www.pokerbots.ac).
+- **Prepare OPSD data:** write a hint and build its dataset (step 10) so it's ready when GPUs free up.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 | --- | --- |
 | `uv sync` can't find `ac2` | Export `UV_INDEX_AC2_USERNAME=__token__` and `UV_INDEX_AC2_PASSWORD=<API key>` before `uv sync`. |
 | `doctor`: `can't reach AC2`, or 401 / 403 errors | Not logged in or the wrong org: run `ac2 login`, or export `AC2_API_KEY` (and `AC2_ORG_ID`). Make sure `AC2_SERVICE_CLIENT_*` isn't set in this terminal. |
-| `ProjectNotFoundError: Project 'pokerbots' not found` | Run `ac2 project init` from the repo root (step 1). Every tool also resolves the project of the folder it runs in. |
-| `422 ... base_url and protocol are required` when creating the opponent | Add `--base-url https://api.openai.com/v1 --protocol openai_responses` (step 2). |
+| `ProjectNotFoundError` | The project name in `pyproject.toml` doesn't exist in your org. It should be `vals-hackathon`; if you changed it, run `ac2 project init` (step 1). Every tool also resolves the project of the folder it runs in. |
+| `422 ... base_url and protocol are required` when creating your own opponent | Add `--base-url https://api.openai.com/v1 --protocol openai_responses` (step 2). |
 | `run_sharded.sh: uvicorn: not found` | Start it with `uv run ./run_sharded.sh` from `harness/` after `uv sync` there. |
+| A run or deployment stays queued | Your org is at its GPU quota. Check what's running (`ac2 train list`, `ac2 inference list`), delete deployments you don't need, stop runs with `--stop-evals`; see [Managing limited compute](#managing-limited-compute). |
+| `doctor`: `no vals-hackathon/ac-vals-model` | Your org should start with it; ask the organizers. Meanwhile, use your own opponent model (step 2). |
+| `doctor`: `no code version yet` | Run `ac2 project init` from the repo root (step 1). |
 | `doctor`: `no connector is connected` | Start step 5 and check its terminal for `Connected`. Only one connector can serve a project: stop any old one (Ctrl-C), and it may take about a minute for AC2 to let a new one in. |
 | Eval or training rollouts fail right away | The harness or connector isn't running, or the token in step 5 doesn't match step 4. Run the doctor with `--harness`. |
-| Rollouts fail with an opponent error | `AC2_API_KEY` wasn't exported in the harness terminal, or `pokerbots/opponent` doesn't exist (step 2). |
+| Rollouts fail with an opponent error | `AC2_API_KEY` wasn't exported in the harness terminal, or the opponent model in your datasets doesn't exist (step 2). |
 | A deployment says ready but calls fail (503, timeouts) | It's still loading. `vals_tools.deploy` waits for a real answer before returning; if you deployed another way, wait and retry, or check `ac2 inference get <infer_...>`. Don't send an eval to a deployment that hasn't answered. |
 | Rollouts fail at collect, mentioning 1 MiB or the output size | AC2's connector carries at most 1 MiB per rollout. The harness trims long multi-hand game logs to fit, keeping the full log in `harness/runs/`. If you built your own long tasks or added fields to the log, keep them under that size. |
 | Rollouts time out under load | The harness is saturated: raise `SHARDS` (and CPUs), or lower `--concurrency` on `rl/train.py`. |

@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 from ac2.sdk import Client
+from ac2.sdk.uploads import list_project_versions
 
 DATASETS = ("train", "select", "eval", "smoke", "table-smoke")
 MIN_AC2 = (0, 3, 97)
@@ -63,6 +64,20 @@ def check(args: argparse.Namespace) -> bool:
         return not report.failed
     project_id = client._project_id  # noqa: SLF001
     report.ok(f"project {args.project} is {project_id}")
+    try:
+        versions = list_project_versions(client._require_api(), project_id)  # noqa: SLF001
+    except Exception:  # noqa: BLE001
+        versions = None
+    if versions:
+        report.ok(f"project {args.project} has a pushed version")
+    elif versions is not None:
+        report.fail(f"project {args.project} has no code version yet: run `ac2 project init` from the repo root")
+    names = {getattr(d, "name", None): d for d in client.inference.list()}
+    if "ac-vals-model" in names:
+        report.ok(f"model {args.project}/ac-vals-model is there ({names['ac-vals-model'].state})")
+    else:
+        report.fail(f"no {args.project}/ac-vals-model: team orgs start with it; ask the organizers, or pass your own "
+                    "--opponent-model to rl/make_dataset.py")
 
     if args.datasets:
         for split in DATASETS:
@@ -101,7 +116,7 @@ def check(args: argparse.Namespace) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--project", default="vals-hackathon")
     parser.add_argument("--prefix", default="pokerbots", help="dataset prefix")
     parser.add_argument("--datasets", action="store_true", help="also check the datasets exist")
     parser.add_argument("--harness", help="also check this harness URL and the project's connector")

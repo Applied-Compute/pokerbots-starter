@@ -6,13 +6,18 @@
   rollout relay and the five opponents call your opponent endpoint.
 - **Reward:** harness-side grading, `6 + clip(EV / 20 BB, -5, +5)`, failures 0 (see the [main README](../README.md)).
   The run names no grader.
-- **Method:** Dr. GRPO (`RLConfig(advantage="dr-grpo")`) with a small KL penalty (`kl_loss_coef=0.01`), 16 hands per
-  step with 4 samples each, learning rate 2e-6, 60 steps.
+- **Method:** Dr. GRPO (`--advantage dr-grpo`) with a small KL penalty (`--kl-coef 0.01`), 16 hands per step
+  (`--hands-per-step`) with 4 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
+- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`), about 8 GPUs in all.
+  AC2's own default for this model is 4 of each, 20 GPUs, more than a team's 10-GPU quota.
+- **Everything else is AC2's default** (learning rate, response and context length, sampling concurrency,
+  checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,
+  then the exact configuration.
 - **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
-  In a single-hand task that update is never read, and the grader ignores it. Training caps every completion at
-  `max_response_len` (5,000), including that turn.
-- **Checkpoints and eval:** a checkpoint every 10 steps, and a sidecar eval on `pokerbots-select` at step 0
-  (base) and every checkpoint.
+  In a single-hand task that update is never read, and the grader ignores it. The harness asks for at most 5,000
+  tokens per decision and 10,000 per cleanup turn; `--max-response-len` sets the training engine's own limit.
+- **Checkpoints and eval:** a checkpoint every 10 steps (`--checkpoint-every`), and an in-run eval on
+  `pokerbots-select` at step 0 (base) and every 10 steps (`--eval-every`, or `--no-eval`).
 
 ## Run
 
@@ -29,7 +34,7 @@ change the obvious things.
 
 ## Cost and capacity
 
-- **GPUs:** one training node plus one inference replica for rollouts and one for the sidecar eval.
+- **GPUs:** about 8 while running: 4 to train, 2 for the rollout replica, 2 for the in-run eval replica.
 - **Opponent calls:** every hand makes several opponent calls per seat, so 64 hands a step is a few hundred opponent
   calls a step. Check your opponent endpoint's price and rate limits before a long run.
 - **Harness:** one shard handles a few dozen concurrent hands. Run enough shards (`SHARDS=`) for the run's

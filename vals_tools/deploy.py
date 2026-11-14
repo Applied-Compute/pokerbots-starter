@@ -85,7 +85,7 @@ def wait_until_serving(client: Client, deployment_id: str, model: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--project", default="vals-hackathon")
     parser.add_argument("--name", required=True, help="deployment name in the project, e.g. base or step20")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--model", help="a catalog model, e.g. Qwen/Qwen3.6-35B-A3B")
@@ -109,6 +109,7 @@ def main() -> None:
         config = ModelConfig(checkpoint=args.checkpoint)
     else:
         config = ModelConfig(model=args.model)
+    print(f"{model_name} holds GPUs (2 for Qwen3.6-35B-A3B) until you delete it: --name {args.name} --delete")
     deployment_id = client.inference.deploy(name=args.name, model=config, cluster=args.cluster_id)
     print(f"deploying {model_name} as {deployment_id}", flush=True)
     wait_until_serving(client, deployment_id, model_name)

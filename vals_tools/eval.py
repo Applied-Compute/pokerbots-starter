@@ -49,7 +49,7 @@ def eval_config(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--project", default="vals-hackathon")
     parser.add_argument("--dataset", default="pokerbots-smoke")
     seat = parser.add_mutually_exclusive_group(required=True)
     seat.add_argument("--model", help="an AC2 catalog model")

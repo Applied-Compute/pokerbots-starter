@@ -110,8 +110,12 @@ def relay_completion(client: httpx.AsyncClient, base_url: str, api_key: str, par
             for c in message.get("tool_calls") or []
         ]
         calls = [c["function"] for c in raw_calls if c["function"]["name"] == SUBMIT_ACTION]
+        # Endpoints with a reasoning parser (AC2 deployments of thinking models) return the thinking apart from
+        # `content`; a reply cut at the cap mid-thought has only that.
+        reasoning = message.get("reasoning_content") or message.get("reasoning")
         return Completion(
             text=message.get("content") or "",
+            reasoning=reasoning if isinstance(reasoning, str) else "",
             tool_arguments=calls[-1]["arguments"] if calls else None,
             tool_calls=raw_calls,
             in_tokens=usage.get("prompt_tokens"),
@@ -205,8 +209,16 @@ def responses_completion(
         ]
         submits = [c["function"] for c in calls if c["function"]["name"] == SUBMIT_ACTION]
         usage = data.get("usage") or {}
+        reasoning = "".join(
+            part.get("text", "")
+            for item in data.get("output", [])
+            if item.get("type") == "reasoning"
+            for part in [*(item.get("content") or []), *(item.get("summary") or [])]
+            if isinstance(part.get("text"), str)
+        )
         return Completion(
             text=text,
+            reasoning=reasoning,
             tool_arguments=submits[-1]["arguments"] if submits else None,
             tool_calls=calls,
             in_tokens=usage.get("input_tokens"),

@@ -408,12 +408,19 @@ uv run python rl/train.py               # prints {"train_id": "train_...", ...}
 The dry run starts with `This launch sets (everything else is AC2's default):` and lists every setting the script
 sends. By default that's the GRPO recipe: `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train`, Dr. GRPO with a small KL
 penalty (`kl_coef = 0.01`), 16 hands × 4 attempts per step, 60 steps, a checkpoint every 10 steps, thinking on, an
-in-run eval on `pokerbots-select` at step 0 and every 10 steps, and 1 rollout and 1 eval replica, so the run fits
-your GPU quota (the dry run prints `GPUs while running: about 8`). **Nothing else is overridden:** learning rate,
-response and context length and sampling concurrency are AC2's defaults. To change any of them,
-pass a flag (`uv run python rl/train.py --help` lists them all), for example
-`uv run python rl/train.py --lr 1e-6 --max-response-len 10000 --dry-run`, and check the dry run before launching.
-The harness already asks for at most 5,000 tokens per decision and 10,000 per cleanup turn on every call. Your harness plays every hand, so keep steps 4–5 running. The run names no
+in-run eval on `pokerbots-select` at step 0 and every 10 steps, a token budget of 24,576 per hand
+(`max_response_len`, see below), and 1 rollout and 1 eval replica, so the run fits your GPU quota (the dry run
+prints `GPUs while running: about 8`). **Nothing else is overridden:** learning rate and sampling concurrency are
+AC2's defaults. To change any setting, pass a flag (`uv run python rl/train.py --help` lists them all), for example
+`uv run python rl/train.py --lr 1e-6 --dry-run`, and check the dry run before launching.
+
+**The token budget is per hand, not per decision.** In training, `max_response_len` counts everything after the
+task's first prompt: every decision's reasoning (training keeps it inline), every observation, and the cleanup turn.
+Once a hand spends it, the trainer returns empty replies with `finish_reason=length`, and the harness logs them as
+"reply hit the cap" and checks or folds; the hand then scores 0 like any format error, so training stays correct, but
+the model learns nothing useful from it. AC2's default of 8,192 runs out after a couple of long decisions, which is
+why the recipe sets 24,576. Size it for your longest hands. The event itself caps each decision at 5,000 tokens and
+the cleanup turn at 10,000, separately. Your harness plays every hand, so keep steps 4–5 running. The run names no
 grader, so AC2 asks your harness's sample grader for every reward.
 
 **Verify and watch:**
@@ -519,6 +526,7 @@ A run takes hours. Useful things to do meanwhile, without getting in its way (mi
 | Rollouts fail with an opponent error | `AC2_API_KEY` wasn't exported in the harness terminal, or the opponent model in your datasets doesn't exist (step 2). |
 | A deployment says ready but calls fail (503, timeouts) | It's still loading. `vals_tools.deploy` waits for a real answer before returning; if you deployed another way, wait and retry, or check `ac2 inference get <infer_...>`. Don't send an eval to a deployment that hasn't answered. |
 | Rollouts fail at collect, mentioning 1 MiB or the output size | AC2's connector carries at most 1 MiB per rollout. The harness trims long multi-hand game logs to fit, keeping the full log in `harness/runs/`. If you built your own long tasks or added fields to the log, keep them under that size. |
+| Training logs show many "reply hit the cap" decisions late in hands | The hand's token budget ran out (see step 8): raise `--max-response-len` (and `--max-total-len`). |
 | Rollouts time out under load | The harness is saturated: raise `SHARDS` (and CPUs), or lower `--concurrency` on `rl/train.py`. |
 | `409 harness_connector_outdated` | Your `ac2` CLI is older than 0.3.97: run `ac2 upgrade`. |
 

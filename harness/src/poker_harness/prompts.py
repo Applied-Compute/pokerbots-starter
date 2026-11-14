@@ -316,11 +316,11 @@ def scratchpad_block(contents: str, limit: int) -> str:
     )
 
 
-def cleanup_prompt(
-    summary: dict[str, Any], seat: str, since: list[dict[str, Any]], fresh: bool, talk: bool, limit: int
-) -> str:
-    """The after-hand message: what this seat hasn't seen yet, how the hand ended, then the request to update the
-    scratchpad. `fresh` (the seat never acted this hand) shows its cards and every action instead."""
+def hand_over_lines(
+    summary: dict[str, Any], seat: str, since: list[dict[str, Any]], fresh: bool, talk: bool
+) -> list[str]:
+    """What this seat hasn't seen of a finished hand (every move since its last action, with talk) and how it ended.
+    `fresh` (the seat never acted this hand) shows its cards and every action instead."""
     lines = [f"## Hand {summary['hand_number']} is over"]
     if fresh:
         mine = summary["starting_state"].get(seat, {})
@@ -349,6 +349,16 @@ def cleanup_prompt(
         + ", ".join(f"{name} {stack}" + (" (out)" if stack == 0 else "") for name, stack in summary["stacks"].items())
         + ".",
         *([f"Out of the game this hand: {', '.join(summary['eliminated'])}."] if summary.get("eliminated") else []),
+    ]
+    return lines
+
+
+def cleanup_prompt(
+    summary: dict[str, Any], seat: str, since: list[dict[str, Any]], fresh: bool, talk: bool, limit: int
+) -> str:
+    """The after-hand message at scratchpad tables: `hand_over_lines`, then the request to update the scratchpad."""
+    lines = hand_over_lines(summary, seat, since, fresh, talk)
+    lines += [
         "",
         (
             f"Now call update_scratchpad exactly once with your scratchpad's full new contents (at most {limit} "

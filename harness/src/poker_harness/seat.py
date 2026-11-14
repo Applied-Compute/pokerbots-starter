@@ -32,6 +32,7 @@ from .prompts import (
     applied_action_text,
     cleanup_prompt,
     decision_prompt,
+    hand_over_lines,
     parse_decision,
     parse_tool_call,
     scratchpad_block,
@@ -78,6 +79,14 @@ class Completion:
     cost: float | None = None
     truncated: bool = False  # the reply ended at the output-token cap (chat finish_reason "length" or Responses
     # status "incomplete" for max_output_tokens); it is played as a format error even if it holds an action
+    reasoning: str = ""  # thinking the endpoint returned apart from `text` (chat `reasoning_content` from a reasoning
+    # parser, or Responses reasoning text); for the log only, never echoed back. A reply cut at the cap mid-thought
+    # is often all reasoning and no text.
+
+
+def logged_text(reply: Completion, limit: int = 2000) -> str:
+    """The end of everything the model wrote this turn, reasoning first, as the log keeps it."""
+    return "\n\n".join(part for part in (reply.reasoning, reply.text) if part.strip())[-limit:]
 
 
 Complete = Callable[[list[Message]], Awaitable[str | Completion]]
@@ -102,6 +111,7 @@ class ModelSeat:
     private: dict[int, dict[str, Any]] = field(default_factory=dict, init=False)  # per hand number
     _hand_info: dict[str, Any] = field(default_factory=dict, init=False)
     _private_messages: set[int] = field(default_factory=set, init=False)  # indexes into `messages`
+    _recaps: list[str] = field(default_factory=list, init=False)  # finished hands' rest, for the next hand's opening
 
     def begin_hand(self, info: dict[str, Any]) -> None:
         """Called by `play_session` before each hand: number, blinds, orbit and stacks."""
@@ -147,6 +157,8 @@ class ModelSeat:
         if ctx.hand_number != self._hand:
             self._open_hand(ctx.hand_number)
             prompt = decision_prompt(ctx, self.rules.table_talk)
+            if self._recaps:  # what this seat missed since its last action (see `hand_over`), oldest first
+                prompt, self._recaps = "\n\n".join([*self._recaps, prompt]), []
             self.messages.append({"role": "user", "content": prompt})
         else:
             new = ctx.hand_actions[self._seen :]
@@ -214,14 +226,14 @@ class ModelSeat:
             "error": None,
             **decision.model_response,
         }
-        response["reasoning"] = response.get("reasoning") or reply.text[-2000:]
+        response["reasoning"] = response.get("reasoning") or logged_text(reply)
         response["submitted_by_tool"] = reply.tool_arguments is not None and not reply.truncated
         if reply.truncated:
             response["truncated"] = True
         # A failed call or unusable reply; the engine's later legal-action adjustments only set `fallback_used`.
         response["format_error"] = bool(error)
         if error:
-            response.update(fallback_used=True, error=error, raw_output=reply.text[-2000:])
+            response.update(fallback_used=True, error=error, raw_output=logged_text(reply))
             if self.rules.strict_actions:  # the official rules' forced default action
                 response.update(afk=True, afk_reason=error)
             decision = Decision("check" if ctx.legal.can_check else "fold")
@@ -230,11 +242,25 @@ class ModelSeat:
         decision.model_response = response
         return decision
 
+    def hand_over(self, summary: dict[str, Any]) -> None:
+        """At multi-hand talk tables without the after-hand turn (no scratchpad): no model call, but what this seat
+        hasn't seen of the finished hand (every move and line of talk since its last action, and how the hand ended)
+        opens its next hand's first message, so it misses nothing said or done at the table."""
+        hand, actions = summary["hand_number"], summary["actions"]
+        fresh = self._hand != hand  # dealt in but never asked to act (e.g. a walk)
+        if fresh:
+            since = actions
+        else:
+            own = actions[self._seen] if self._seen < len(actions) else None
+            since = actions[self._seen + 1 :] if own and own["player"] == self.name else actions[self._seen :]
+        self._recaps.append("\n".join(hand_over_lines(summary, self.name, since, fresh, self.rules.table_talk)))
+
     def _update(self, reply: Completion, error: str | None) -> dict[str, Any]:
         """One cleanup reply judged: "ok", "too_long" (with contents), "malformed", "none", "cut" or "error"."""
         calls = [c for c in reply.tool_calls if _tool_name(c) == UPDATE_SCRATCHPAD]
         attempt: dict[str, Any] = {
             "output": reply.text,
+            "reasoning": reply.reasoning[-2000:],
             "update_calls": [c["function"].get("arguments") for c in calls],
             "ignored_calls": len(reply.tool_calls) - min(len(calls), 1),
             "truncated": reply.truncated,

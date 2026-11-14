@@ -118,16 +118,16 @@ def action(player: str, kind: str, format_error: bool = False) -> dict:
     return {"player": player, "action": {"type": kind}, "model_response": {"format_error": format_error}}
 
 
-def test_reward_is_ev_in_20_bb_units_shifted_by_six() -> None:
-    ev = {"seat0": {"ev_bb": 30.0, "realized_bb": 40.0, "method": "allin"}}
-    log = log_for([action("seat0", "call")], {"seat0": 280, "seat1": 120}, ev=ev)
+def test_reward_is_ev_in_1_bb_units_shifted_by_six() -> None:
+    ev = {"seat0": {"ev_bb": 2.0, "realized_bb": 4.0, "method": "allin"}}
+    log = log_for([action("seat0", "call")], {"seat0": 208, "seat1": 192}, ev=ev)
     reply = grade_log(log, ["seat0"])
-    assert reply["score"] == pytest.approx(REWARD_OFFSET + 30.0 / 20.0)
-    assert reply["artifacts"]["ev_bb"] == 30.0 and reply["artifacts"]["realized_bb"] == 40.0
+    assert reply["score"] == pytest.approx(REWARD_OFFSET + 2.0 / 1.0)
+    assert reply["artifacts"]["ev_bb"] == 2.0 and reply["artifacts"]["realized_bb"] == 4.0
 
-    # Without EV labels the reward is the chips actually won.
-    plain = log_for([action("seat0", "call")], {"seat0": 240, "seat1": 160})
-    assert grade_log(plain, ["seat0"])["score"] == pytest.approx(REWARD_OFFSET + 20.0 / 20.0)
+    # Without EV labels the reward is the chips actually won (+2 BB here).
+    plain = log_for([action("seat0", "call")], {"seat0": 204, "seat1": 196})
+    assert grade_log(plain, ["seat0"])["score"] == pytest.approx(REWARD_OFFSET + 2.0 / 1.0)
     assert grade_log(plain, ["seat0"])["artifacts"]["ev_method"] == "realized"
 
 

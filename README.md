@@ -407,7 +407,7 @@ uv run python rl/train.py               # prints {"train_id": "train_...", ...}
 
 The dry run starts with `This launch sets (everything else is AC2's default):` and lists every setting the script
 sends. By default that's the GRPO recipe: `Qwen/Qwen3.6-35B-A3B` on `pokerbots-train`, Dr. GRPO with a small KL
-penalty (`kl_coef = 0.01`), 16 hands × 4 attempts per step, 60 steps, a checkpoint every 10 steps, thinking on, an
+penalty (`kl_coef = 0.01`), 16 hands × 16 attempts per step, 60 steps, a checkpoint every 10 steps, thinking on, an
 in-run eval on `pokerbots-select` at step 0 and every 10 steps, a token budget of 24,576 per hand
 (`max_response_len`, see below), and 1 rollout and 1 eval replica, so the run fits your GPU quota (the dry run
 prints `GPUs while running: about 8`). **Nothing else is overridden:** learning rate and sampling concurrency are
@@ -542,7 +542,7 @@ A run takes hours. Useful things to do meanwhile, without getting in its way (mi
 | `vals_tools/` | `doctor` (setup check), `deploy` (serve a model), `eval` (run an eval), `score` (compare evals), `tasks` (task format). |
 | `src/pokerbots/` | The AC2 project's package, empty on purpose. `.ac2ignore` keeps everything else out of the upload. |
 
-**The sample grader** scores the trained seat's result in big blinds: `6 + clip(EV / 20 BB, -5, +5)`, so every real
+**The sample grader** scores the trained seat's result in big blinds: `6 + clip(EV / 1 BB, -5, +5)`, so every real
 hand scores between 1 and 11, and a model-caused failure (an invalid move, a reply cut off at the cap, a failed
 rollout) scores exactly 0. EV counts an all-in before the river at its expected value, which removes most of the card
 luck. To use your own reward, edit `hand_reward`, `GRADER_PARAMS` or `artifacts` in `grading.py` and restart the

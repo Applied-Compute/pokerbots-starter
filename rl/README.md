@@ -4,10 +4,10 @@
 
 - **Rollouts:** each hand is played by the harness; the trained seat calls the run's inference engine through the
   rollout relay and the five opponents call your opponent endpoint.
-- **Reward:** harness-side grading, `6 + clip(EV / 20 BB, -5, +5)`, failures 0 (see the [main README](../README.md)).
+- **Reward:** harness-side grading, `6 + clip(EV / 1 BB, -5, +5)`, failures 0 (see the [main README](../README.md)).
   The run names no grader.
 - **Method:** Dr. GRPO (`--advantage dr-grpo`) with a small KL penalty (`--kl-coef 0.01`), 16 hands per step
-  (`--hands-per-step`) with 4 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
+  (`--hands-per-step`) with 16 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
 - **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`), about 8 GPUs in all.
   AC2's own default for this model is 4 of each, 20 GPUs, more than a team's 10-GPU quota.
 - **Everything else is AC2's default** (learning rate, response and context length, sampling concurrency,

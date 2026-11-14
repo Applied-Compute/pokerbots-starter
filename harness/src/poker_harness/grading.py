@@ -16,12 +16,13 @@ What it scores (deliberately naive)
 The trained seat's result in big blinds. With `env_params.ev_labels`, an all-in before the river counts its expected
 share of the pot instead of the cards that came (`ev.py`); otherwise it is the chips actually won.
 
-    score = 6 + clip(hand_reward, -5, +5),  hand_reward = clip(EV, -100 BB, +100 BB) / 20 BB
+    score = 6 + clip(hand_reward, -5, +5),  hand_reward = clip(EV, -100 BB, +100 BB) / 1 BB
 
-So every real hand scores in [1, 11]. Model-caused failures score exactly 0: a format error (no usable
-`submit_action`, or a reply cut off at the token cap), or a rollout AC2 reports as failed or truncated. Rewards are
-never negative, a failure is always worse than any real hand, and failed samples still train instead of being
-dropped. The +6 is a shift, not a rescale, so group-relative advantages (GRPO) are unchanged.
+So every real hand scores in [1, 11]. Using 1 BB per reward point (not 20) makes typical single-hand pots
+actually use that band, so GRPO sees real within-group gaps. Model-caused failures score exactly 0: a format
+error (no usable `submit_action`, or a reply cut off at the token cap), or a rollout AC2 reports as failed or
+truncated. Rewards are never negative, a failure is always worse than any real hand, and failed samples still
+train instead of being dropped. The +6 is a shift, not a rescale, so group-relative advantages (GRPO) are unchanged.
 
 Extension points (search for "EXTENSION POINT")
 -----------------------------------------------
@@ -44,7 +45,7 @@ REWARD_OFFSET = 6.0  # shifts the clipped reward [-5, +5] to [1, 11]
 REWARD_FLOOR, REWARD_CEILING = -5.0, 5.0
 FAILURE_SCORE = 0.0  # every model-caused failure
 EV_CLIP_BB = 100.0  # one hand can't swing the reward by more than a full stack
-EV_UNIT_BB = 20.0  # 20 BB of EV = 1 reward point
+EV_UNIT_BB = 1.0  # 1 BB of EV = 1 reward point so typical hands use most of [1, 11]
 MAX_SCORE_BYTES = 1 << 20  # AC2 rejects collect_score replies over 1 MiB
 
 # EXTENSION POINT 2: the `grader_params` keys your reward accepts. Unknown keys fail the grading, so a typo in a
@@ -110,7 +111,7 @@ def seat_result(log: dict[str, Any], policy_seats: list[str]) -> SeatResult:
 def hand_reward(result: SeatResult, params: dict[str, Any]) -> float:
     """EXTENSION POINT 1: the raw reward for a game the seat played without failing, before clipping and the +6.
 
-    The default is EV in units of 20 BB, clipped to +-100 BB. `result` has everything the log says about the trained
+    The default is EV in units of 1 BB, clipped to +-100 BB. `result` has everything the log says about the trained
     seat; read more from the log in `seat_result` if you need it. `params` is the task's checked `grader_params`.
     """
     del params  # the default reward takes no parameters

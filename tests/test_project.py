@@ -80,9 +80,11 @@ def test_training_configs_send_only_explicit_settings() -> None:
     config = grpo.run_config(grpo.parser().parse_args([]), "n").to_json()
     text = json.dumps(config, default=str)
     assert "dr-grpo" in text and "pokerbots-train" in text and "pokerbots-select" in text
-    assert "learning_rate" not in text and "max_response_len" not in text
+    assert "learning_rate" not in text
+    # The hand's token budget is set explicitly: AC2's default (8,192) runs out on multi-decision hands.
+    assert config["experiment_cfg"]["rollout"]["max_response_len"] == 24576
     # Replica counts are set: AC2's default for this model (4 + 4 replicas) needs more GPUs than a team's quota.
-    assert config["experiment_cfg"]["rollout"] == {"n_inference_replicas": 1}
+    assert config["experiment_cfg"]["rollout"]["n_inference_replicas"] == 1
     assert config["experiment_cfg"]["eval"]["n_inference_replicas"] == 1
     tuned = grpo.run_config(grpo.parser().parse_args(["--lr", "1e-6", "--max-response-len", "10000"]), "n").to_json()
     assert tuned["experiment_cfg"]["trainer"]["learning_rate"] == 1e-6

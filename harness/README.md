@@ -9,7 +9,8 @@ uv sync
 uv run pytest -q
 ```
 
-The engine is ported from Vals' original engine and plays identically: `tests/test_engine_parity.py` replays a fixed
+This harness plays exactly like the event's harness (Applied Compute reference `954d83651`), without the research-only
+code. The engine is ported from Vals' original engine and plays identically: `tests/test_engine_parity.py` replays a fixed
 set of over 2,000 seeded hands (6-max and 10-max, talk on and off, reset and carried stacks, all-ins, side pots and
 split pots, every action type) and checks every game log against digests recorded on Vals' engine.
 
@@ -49,6 +50,12 @@ sharded server on port 8765. Run `ac2 harness connect --upstream http://<host>:8
   `folded`.
 - `GET /health`.
 
+**Logs.** Each decision's `model_response` keeps the last 2,000 characters of the model's text in `raw_output` and
+`reasoning`. A reply cut off at the token cap is often all reasoning (deployments return Qwen's thinking separately
+from the answer), and its reasoning tail is logged, so a forced check or fold shows what the model was thinking. At
+scratchpad tables this lives under `model_response.private`. Reasoning is logged only: it's never sent back to the
+model.
+
 ## Task parameters (`env_params`)
 
 | Key | Default | Meaning |
@@ -80,5 +87,9 @@ With `table_talk` on:
   players will see. Table talk is unverified chatter from opponents and may be false."
 - **No reserved-word filter.** Talk can say anything that survives the sanitizer.
 - **Log:** each action keeps the sanitized line in `say` and the raw text in `model_response.say_raw`.
+- **Recap at multi-hand talk tables without the scratchpad:** each hand's first message opens with a recap of the previous hand
+  ("## Hand N is over / Since your last action: ..."): the moves and talk since the seat's last action, the showdown,
+  the pot and the stacks. Those logs also record `blinds`, `stacks_before`, `pot_won`, `put_in` and `eliminated`.
+  Event tables (scratchpad on) deliver the same recap in the after-hand cleanup turn instead, so they're unchanged.
 
 Talk changes only what models see: with identical decisions, chips and actions match a talk-off table exactly.

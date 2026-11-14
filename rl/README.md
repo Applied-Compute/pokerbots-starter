@@ -14,8 +14,10 @@
   checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,
   then the exact configuration.
 - **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
-  In a single-hand task that update is never read, and the grader ignores it. The harness asks for at most 5,000
-  tokens per decision and 10,000 per cleanup turn; `--max-response-len` sets the training engine's own limit.
+  In a single-hand task that update is never read, and the grader ignores it.
+- **Token budget:** `--max-response-len 24576` (and `--max-total-len 32768`). In training this is a budget for the
+  whole hand: every reply's reasoning, every observation and the cleanup turn. AC2's default (8,192) runs out after a
+  couple of long decisions, and the rest of the hand is played as check or fold. Raise it for longer hands.
 - **Checkpoints and eval:** a checkpoint every 10 steps (`--checkpoint-every`), and an in-run eval on
   `pokerbots-select` at step 0 (base) and every 10 steps (`--eval-every`, or `--no-eval`).
 

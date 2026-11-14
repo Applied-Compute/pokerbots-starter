@@ -155,3 +155,63 @@ def test_the_opsd_builder_lists_the_tools_the_harness_gives_every_seat() -> None
     rules = table_rules(with_preset({"preset": "event", "seed": 1}))
     tools = table_tools(talk_fields(["action", "amount"]), scratchpad=rules.scratchpad, limit=rules.scratchpad_chars)
     assert recorded == [{"type": "function", **t["function"]} for t in tools]
+
+
+
+def thinking_capped_relay(requests: list[dict]) -> FastAPI:
+    """A relay shaped like AC2's BYOH relay serving a reasoning-parser deployment: whenever checking is legal the reply
+    is cut at the cap mid-thought and comes back as `reasoning_content` only, with no `content` and no call (so the
+    seat checks and plays on); otherwise it calls."""
+    relay = FastAPI()
+
+    @relay.post("/job/trace/v1/chat/completions")
+    async def chat(request: Request) -> dict:
+        body = await request.json()
+        requests.append(body)
+        last_user = next(m["content"] for m in reversed(body["messages"]) if m["role"] == "user")
+        if "check" in last_user.split("Legal actions:")[-1]:
+            message = {"role": "assistant", "content": None, "reasoning_content": "Pot odds first. " * 300 + "CUT-HERE"}
+            return {"choices": [{"message": message, "finish_reason": "length"}], "usage": {"completion_tokens": 5000}}
+        call = {
+            "id": f"c{len(requests)}",
+            "type": "function",
+            "function": {"name": "submit_action", "arguments": '{"action": "call"}'},
+        }
+        message = {"role": "assistant", "content": "", "reasoning_content": "Calling.", "tool_calls": [call]}
+        return {"choices": [{"message": message, "finish_reason": "tool_calls"}], "usage": {}}
+
+    return relay
+
+
+async def test_a_reply_cut_mid_thought_keeps_its_reasoning_in_the_log_but_not_in_the_conversation(
+    tmp_path: Path,
+) -> None:
+    requests: list[dict] = []
+    app = create_app(relay_transport=httpx.ASGITransport(app=thinking_capped_relay(requests)), runs_dir=tmp_path)
+    params = {"preset": "event", "seed": 4, "total_hands": 1, "scratchpad": False}  # model text stays in the log
+    status, outputs = await play(app, {"input": [], "env_params": params})
+    actions = outputs["log"]["hands"][0]["actions"]
+    assert status["status"] == "completed" and actions
+    cut = [a["model_response"] for a in actions if a["model_response"].get("truncated")]
+    assert cut and len(cut) < len(actions)
+    for response in cut:
+        assert response["afk"] and response["error"] == "reply hit the 5000-token cap"
+        assert response["raw_output"].endswith("CUT-HERE") and len(response["raw_output"]) == 2000
+        assert response["reasoning"] == response["raw_output"]
+    called = [a["model_response"] for a in actions if not a["model_response"].get("truncated")]
+    assert all(r["reasoning"] == "Calling." and not r["format_error"] for r in called)
+    echoed = [m for body in requests for m in body["messages"] if m["role"] == "assistant"]
+    assert any(m["content"] == "" and "tool_calls" not in m for m in echoed)  # a cut turn, echoed empty
+    assert all("reasoning_content" not in m for m in echoed)  # thinking never goes back to the model
+
+
+async def test_a_responses_reply_keeps_its_reasoning_text() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        reasoning = {"type": "reasoning", "summary": [{"type": "summary_text", "text": "Weighing a call."}]}
+        body = {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}, "output": [reasoning]}
+        return httpx.Response(200, json=body)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        params = {"model_label": "opponent", "max_completion_tokens": 5000}
+        reply = await responses_completion(client, "http://gw/v1", "k", params)([{"role": "user", "content": "act"}])
+    assert reply.truncated and reply.text == "" and reply.reasoning == "Weighing a call."

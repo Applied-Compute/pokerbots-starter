@@ -134,6 +134,8 @@ async def play_session(
     start_time = datetime.now(UTC).isoformat()
     button = max(by_seat)
     official = rules.ranking is not None
+    # Multi-hand talk tables without the after-hand turn: each seat's next hand opens with what it missed of the last.
+    recap = rules.table_talk and not rules.scratchpad and rules.total_hands > 1
     timestep = 0
 
     def log(complete: bool) -> dict[str, Any]:
@@ -194,7 +196,7 @@ async def play_session(
             big_blind=big_blind,
         )
         record, ending = await runner.play(no_history, timestep)
-        if official or rules.scratchpad:
+        if official or rules.scratchpad or recap:
             record["blinds"] = {"small_blind": small_blind, "big_blind": big_blind}
             record["stacks_before"] = stacks_before
             _chip_flow(runner, record)
@@ -217,9 +219,9 @@ async def play_session(
             if not rules.reset_stacks and stacks[seat] > 0 and ending[seat] == 0:
                 eliminated[player.name] = hand_number
                 busted.append(player.name)
-        if official or rules.scratchpad:
+        if official or rules.scratchpad or recap:
             record["eliminated"] = busted
-        if rules.scratchpad:  # every seat dealt in gets the after-hand turn, concurrently
+        if rules.scratchpad or recap:
             summary = {
                 **{k: record[k] for k in ("hand_number", "actions", "final_board", "showdown", "shown_hole_cards")},
                 "starting_state": record["starting_state"],
@@ -227,6 +229,11 @@ async def play_session(
                 "stacks": {by_seat[s].name: ending[s] for s in sorted(by_seat)},
                 "eliminated": busted,
             }
+        if recap:  # no model call: the seat keeps the rest of the hand for its next first message
+            for seat in runner.order:
+                if hasattr(by_seat[seat], "hand_over"):
+                    by_seat[seat].hand_over(summary)
+        if rules.scratchpad:  # every seat dealt in gets the after-hand turn, concurrently
             dealt = [by_seat[s] for s in runner.order if hasattr(by_seat[s], "cleanup")]
             results = await asyncio.gather(*(p.cleanup(summary) for p in dealt), return_exceptions=True)
             for player, result in zip(dealt, results, strict=True):

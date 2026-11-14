@@ -1,7 +1,10 @@
 """GRPO on single 6-max hands through your self-hosted harness, graded by the harness's sample grader.
 
 Every setting this script sends is a flag below. A flag left unset is not sent, so AC2 uses its own default for it
-(learning rate, response and context length, sampling concurrency, ...). Replica counts are the exception: AC2's
+(learning rate, sampling concurrency, ...). Two kinds of setting are the exception. Token budgets: in BYOH
+training, `max_response_len` is a budget for the whole hand (every decision's reasoning, kept inline, plus every
+observation and the cleanup turn), and AC2's default of 8,192 runs out after a couple of long decisions, so the recipe
+sets 24,576. Replica counts: AC2's
 default for Qwen3.6-35B-A3B is 4 inference and 4 eval replicas (2 GPUs each), 20 GPUs per run with training, more
 than a team's 10-GPU quota, so the recipe sets 1 of each: 8 GPUs. `--dry-run` prints the
 settings this launch sets and the exact configuration it would submit; nothing else is overridden.
@@ -114,6 +117,11 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--checkpoint-every", type=int, default=10, help="steps between checkpoints (default 10)")
     g.add_argument("--eval-every", type=int, default=10, help="steps between in-run evals (default 10)")
     g.add_argument("--no-eval", action="store_true", help="no in-run eval")
+    g.add_argument("--max-response-len", type=int, default=24_576,
+                   help="token budget for a whole hand: every reply (reasoning included), observation and the cleanup "
+                        "turn after the task's first prompt (default 24576; AC2's own default is 8192)")
+    g.add_argument("--max-total-len", type=int, default=32_768,
+                   help="prompt plus that budget (default 32768)")
     g.add_argument("--inference-replicas", type=int, default=1,
                    help="inference replicas for rollouts, 2 GPUs each (default 1; AC2's own default is 4)")
     g.add_argument("--eval-replicas", type=int, default=1,
@@ -123,10 +131,6 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--no-tensorboard", dest="tensorboard", action="store_false", help="don't record TensorBoard logs")
     a = p.add_argument_group("left to AC2's defaults unless you set them")
     a.add_argument("--lr", type=float, help="learning rate")
-    a.add_argument("--max-response-len", type=int,
-                   help="the training engine's per-reply token limit (the harness already asks for at most 5,000 "
-                        "tokens per decision and 10,000 per cleanup turn)")
-    a.add_argument("--max-total-len", type=int, help="prompt plus reply token limit")
     a.add_argument("--concurrency", type=int, help="concurrent hands on your harness")
     a.add_argument("--keep-checkpoints", type=int, help="checkpoints to keep")
     a.add_argument("--eval-dataset", help="in-run eval dataset (default <prefix>-select)")

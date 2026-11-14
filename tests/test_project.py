@@ -95,3 +95,14 @@ def test_training_configs_send_only_explicit_settings() -> None:
     assert "offline" in text and '"num_train_steps": 20' in text
     assert "learning_rate" not in text and "max_response_len" not in text
     assert opsd["experiment_cfg"]["rollout"] == {"n_inference_replicas": 0}
+
+
+def test_every_deployment_is_exactly_one_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One replica, never scaled out, and no flag to ask for more."""
+    from vals_tools import deploy
+
+    assert (deploy.SCALING.min_replicas, deploy.SCALING.max_replicas) == (1, 1)
+    monkeypatch.setattr(sys, "argv", ["deploy.py", "--name", "x", "--model", "m", "--replicas", "2"])
+    with pytest.raises(SystemExit) as exit_info:
+        deploy.main()
+    assert exit_info.value.code == 2  # argparse rejects the unknown flag before anything reaches AC2

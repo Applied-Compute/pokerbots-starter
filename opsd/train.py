@@ -45,7 +45,7 @@ def _set(**values: Any) -> dict[str, Any]:
 
 
 def run_config(args: argparse.Namespace, name: str) -> RunConfig:
-    launch = _set(cluster_id=args.cluster_id, tensorboard_enabled=args.tensorboard or None)
+    launch = _set(tensorboard_enabled=args.tensorboard or None)  # AC2 places the run; teams can't pick a cluster
     return RunConfig(
         model=args.model,
         name=name,
@@ -96,7 +96,6 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--max-response-len", type=int, help="per-reply token limit")
     a.add_argument("--max-total-len", type=int, help="prompt plus reply token limit")
     a.add_argument("--keep-checkpoints", type=int, help="checkpoints to keep")
-    a.add_argument("--cluster-id")
     return p
 
 

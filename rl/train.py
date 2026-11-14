@@ -63,7 +63,7 @@ def run_config(args: argparse.Namespace, name: str) -> RunConfig:
             )
         )
     )
-    launch = _set(cluster_id=args.cluster_id, tensorboard_enabled=args.tensorboard or None)
+    launch = _set(tensorboard_enabled=args.tensorboard or None)  # AC2 places the run; teams can't pick a cluster
     return RunConfig(
         model=args.model,
         name=name,
@@ -136,7 +136,6 @@ def parser() -> argparse.ArgumentParser:
     a.add_argument("--eval-dataset", help="in-run eval dataset (default <prefix>-select)")
     a.add_argument("--eval-concurrency", type=int, help="concurrent hands in the in-run eval")
     a.add_argument("--grading-timeout", type=float, help="seconds AC2 waits for your harness to grade a rollout")
-    a.add_argument("--cluster-id")
     return p
 
 

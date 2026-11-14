@@ -34,6 +34,7 @@ already has (see [Your team org](#your-team-org)); every tool here defaults to i
 | Cleanup turn | After each hand: what happened since your last action, then exactly one `update_scratchpad(contents)` call (one retry if it's too long or malformed) |
 | Budget | No time limit. At most 5,000 output tokens per decision and 10,000 for the cleanup turn, thinking included |
 | Thinking | Qwen thinking is on (`enable_thinking: true`) |
+| Auto-pause | In ranked games, an entry whose recent decisions mostly fail (more than half of its last 40) sits out, its seats checking or folding, until you submit a deployment again. Not applied in Official Tournaments. |
 | Entries | Only fine-tunes of `Qwen/Qwen3.6-35B-A3B` deployed from one of your AC2 training run's checkpoints |
 
 In the harness, all of this is one setting: `env_params.preset: "event"`.
@@ -69,6 +70,12 @@ When you first log in to the [AC2 console](https://platform.appliedcompute.com),
 - **A model deployment `vals-hackathon/ac-vals-model`**, an external model Applied Compute provides to every team.
   This README uses it for the opponent seats and the smoke test, so you don't need your own model provider key.
 - **A Vals Arena page** in the console sidebar, where you submit your entry (step 12).
+
+Team orgs are **BYOH-only**: AC2 runs none of your code, only your harness (through the connector) does. That
+allows everything in this README: GRPO through your harness, harness-graded evals, data-only offline OPSD (what
+`opsd/` does: precomputed hints, no code of yours), deployments and arena entries. It rules out online OPSD, custom
+images or launch arguments, and SSH into jobs. AC2 also places every job itself, so never pass a cluster (only
+Applied Compute staff can choose one).
 
 ### Projects
 
@@ -138,7 +145,7 @@ An eval does steps 1–4 with a fixed model and keeps the scores instead of trai
 
 The RL example uses **GRPO**:
 
-- **Several attempts per task.** For each task the model plays the same hand several times (here 4). Because
+- **Several attempts per task.** For each task the model plays the same hand several times (here 16). Because
   sampling is random, it plays differently each time.
 - **Score each attempt** with the grader.
 - **Compare within the group.** An attempt that scored above the group's average gets a positive advantage, one
@@ -151,32 +158,59 @@ The RL example uses **GRPO**:
 
 ## Managing limited compute
 
-Each team has a **10-GPU quota**. A job asks for its GPUs when it starts; if they'd take your org over the quota, it
-waits in the queue until enough GPUs are free. Approximate GPU use for `Qwen/Qwen3.6-35B-A3B` (from AC2's
-[Default GPUs](https://docs.appliedcompute.com/platform/training/configuration.md) table: 4 GPUs to train, 2 per
-inference or eval replica):
+Each team has a **10-GPU quota**. A job asks for its GPUs when it starts; a launch that would take your org over the
+quota sits **queued** until enough GPUs free up. GPU use for `Qwen/Qwen3.6-35B-A3B` with this repo's settings
+(`--dry-run` prints the estimate for each training launch):
 
-| Job | GPUs (approx.) |
+| Job | GPUs |
 | --- | --- |
-| RL run, as `rl/train.py` launches it (1 rollout replica + 1 in-run eval replica) | 8 (6 with `--no-eval`) |
-| Offline OPSD run (`opsd/train.py`) | 4 |
-| An inference deployment (the base model, a checkpoint, your arena entry) | 2 per replica |
-| An eval through your harness | 0 extra (it uses the deployment it plays) |
+| RL run (`rl/train.py`): 4 to train + 2 for the rollout engine + 2 for the in-run eval | 8 (6 with `--no-eval`) |
+| Offline OPSD run (`opsd/train.py`): training only | 4 |
+| Inference deployment (`vals_tools.deploy`): base model, checkpoint or arena entry | 1 per replica (default 1) |
+| Eval through your harness (`vals_tools.eval`) | 0 extra: it plays the deployment it's given |
 
-So you can't run everything at once: an RL run plus one deployment already uses your 10 GPUs. AC2's own default
-replica counts for this model would ask for 20 GPUs per RL run, which is why `rl/train.py` sets 1 inference and 1 eval
-replica.
+**What fits at once:** one RL run plus up to 2 deployments (8 + 2); or OPSD plus up to 6 deployments (4 + 6); or an
+RL run with `--no-eval` plus OPSD (6 + 4). Two RL runs don't fit.
 
-- **Delete deployments when you're done with them:** `uv run python -m vals_tools.deploy --name <name> --delete`.
-  A deployment holds its GPUs until it's deleted, even when nothing calls it.
-- **Stop a run's in-run evals with it:** `ac2 train stop <train id> --stop-evals`. Without `--stop-evals`, attached
-  evals keep running.
-- **Check before you launch:** `--dry-run` on `rl/train.py` and `opsd/train.py` prints what the run will use,
-  including a GPU estimate.
-- **Keep few checkpoints, and delete the ones you don't need.** Checkpoint storage is limited: pass
-  `--keep-checkpoints <n>` to the training scripts, list them with `ac2 checkpoints list vals-hackathon <train id>`, and
-  delete one with `ac2 checkpoints delete <train id> <step> --format all --cluster all`.
+- **Deployments use 1 GPU.** Qwen3.6-35B-A3B serves on a single GPU (tensor-parallel 1, 262,144-token context), which
+  is plenty for a 30-hand game: each prompt holds only the current hand and the scratchpad. Use 1-GPU deployments for
+  evals and for your arena entry; that's what `vals_tools.deploy` creates.
+- **Training's inference engines use 2 GPUs each.** AC2's model config runs each rollout and in-run eval engine on 2
+  GPUs, and no run setting changes that, so they can't go down to 1. AC2's default of 4 of each would ask for 20 GPUs
+  per RL run, which is why `rl/train.py` sets 1 rollout and 1 eval replica.
+- **Delete idle deployments** to free quota: `uv run python -m vals_tools.deploy --name <name> --delete`. A deployment
+  holds its GPU until it's deleted, even when nothing calls it. **Never delete the deployment entered in the arena.**
+- **Stop a run early when it isn't helping:** if the in-run eval on `pokerbots-select` keeps getting worse, or most
+  decisions become format errors, stop it with `ac2 train stop <train id> --stop-evals` (without `--stop-evals` its
+  in-run evals keep running and keep their GPUs).
+- **Score early checkpoints too.** Later checkpoints aren't automatically better; deploy and evaluate a few (step 9).
+- **Keep few checkpoints.** Storage is limited: pass `--keep-checkpoints <n>` to the training scripts, list them with
+  `ac2 checkpoints list vals-hackathon <train id>`, and delete ones you don't need with
+  `ac2 checkpoints delete <train id> <step> --format all --cluster all`.
+- **Size the harness for the run.** A GRPO step plays 16 hands × 16 attempts = 256 games; with the default
+  `SHARDS=4`, cap them with `--concurrency 64` on `rl/train.py`, or run more shards on a bigger machine. The provided
+  opponent model allows about 60 requests per second for your org, shared by everything you run.
 - **Smoke first.** Try a short run (`--steps 5`) before a long one, so a mistake costs minutes, not hours.
+
+## Suggested team plan
+
+**Lanes,** so teammates don't block each other:
+
+| Lane | Owns |
+| --- | --- |
+| Harness, prompt and strategy | `harness/`; what the model is asked and how it plays |
+| Datasets and OPSD hints | `rl/make_dataset.py`, `vals_tools/tasks.py`, `opsd/hint.py` and the hinted datasets |
+| RL | launches, monitoring, stopping, and the reward in `grading.py` |
+| Evals and analysis | evals vs base, arena replays, traces and game logs |
+| Deployment and submission | deployments, `play_local.py` checks, the arena entry, freeing GPUs |
+
+**While a run trains,** work in parallel: evals of earlier checkpoints, new datasets, grader changes (tested with
+`cd harness && uv run pytest`), and local games against the house model (`harness/play_local.py`). See
+[While your training run is going](#while-your-training-run-is-going).
+
+**Timeline:** submit something early, even a first checkpoint, so you're on the leaderboard (the first rating lands
+about 15–25 minutes after you submit). Then iterate: train, evaluate against base, and resubmit when something is
+better.
 
 ## Setup
 
@@ -481,6 +515,19 @@ uv run python -m vals_tools.deploy --name entry --checkpoint <your best ckpt_...
 
 Note the printed `deployment_id` (`infer_...`). Keep this deployment running for as long as it's entered.
 
+**Check that it calls the tool.** The arena's entry probe only checks a plain text reply, so a deployment that can't
+call `submit_action` passes it and then fails every decision: its seats check or fold, and the arena pauses the
+entry. Before submitting, play a short local game against it:
+
+```bash
+cd harness
+AC2_API_KEY=<your AC2 API key> uv run python play_local.py --model vals-hackathon/entry --hands 6
+```
+
+It plays under the event rules with your deployment in seat 0 and the provided model in the other seats, then prints
+how many of your decisions failed (`N decisions by vals-hackathon/entry, 0 failed` is what you want) and writes the
+log to `harness/runs/`. `--opponents bots` uses scripted players instead, with no opponent calls.
+
 ### 12. Submit to the arena
 
 In the AC2 console, open **Vals Arena** in the sidebar. It lists your eligible deployments: running checkpoint
@@ -502,6 +549,7 @@ A run takes hours. Useful things to do meanwhile, without getting in its way (mi
 - **Work on your reward.** Change the sample grader's extension points (`hand_reward`, `GRADER_PARAMS`, `artifacts` in
   [`grading.py`](harness/src/poker_harness/grading.py)) and check them with `cd harness && uv run pytest`. Restart the
   harness only between runs: the running run grades with whatever harness is up.
+- **Play local games** against the house model or scripted players with `harness/play_local.py` (step 11).
 - **Test harness changes locally** with scripted players, no model needed (`ScriptedPlayer` in
   `poker_harness.engine`, as in `harness/tests/test_harness.py`), against a second harness on another port.
 - **Read what your model does:** traces in the AC2 platform (or `ac2 traces download <run or eval id>`) and the game
@@ -527,6 +575,7 @@ A run takes hours. Useful things to do meanwhile, without getting in its way (mi
 | A deployment says ready but calls fail (503, timeouts) | It's still loading. `vals_tools.deploy` waits for a real answer before returning; if you deployed another way, wait and retry, or check `ac2 inference get <infer_...>`. Don't send an eval to a deployment that hasn't answered. |
 | Rollouts fail at collect, mentioning 1 MiB or the output size | AC2's connector carries at most 1 MiB per rollout. The harness trims long multi-hand game logs to fit, keeping the full log in `harness/runs/`. If you built your own long tasks or added fields to the log, keep them under that size. |
 | Training logs show many "reply hit the cap" decisions late in hands | The hand's token budget ran out (see step 8): raise `--max-response-len` (and `--max-total-len`). |
+| A launch fails mentioning a cluster or placement | Don't pass a cluster: AC2 places every job (only Applied Compute staff can choose). The tools here never set one. |
 | Rollouts time out under load | The harness is saturated: raise `SHARDS` (and CPUs), or lower `--concurrency` on `rl/train.py`. |
 | `409 harness_connector_outdated` | Your `ac2` CLI is older than 0.3.97: run `ac2 upgrade`. |
 
@@ -540,6 +589,7 @@ A run takes hours. Useful things to do meanwhile, without getting in its way (mi
 | [`rl/`](rl/) | Dataset upload and the GRPO run. |
 | [`opsd/`](opsd/) | The hint, the OPSD dataset builder and the OPSD run. |
 | `vals_tools/` | `doctor` (setup check), `deploy` (serve a model), `eval` (run an eval), `score` (compare evals), `tasks` (task format). |
+| [`harness/play_local.py`](harness/play_local.py) | Plays one event game locally against a deployment, to check it calls `submit_action` before you submit it. |
 | `src/pokerbots/` | The AC2 project's package, empty on purpose. `.ac2ignore` keeps everything else out of the upload. |
 
 **The sample grader** scores the trained seat's result in big blinds: `6 + clip(EV / 1 BB, -5, +5)`, so every real

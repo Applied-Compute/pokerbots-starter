@@ -25,7 +25,6 @@ def eval_config(
     deployment: str | None = None,
     api_type: str = "responses",
     max_parallel: int = 32,
-    cluster_id: str | None = None,
 ) -> EvalConfig:
     if (model is None) == (deployment is None):
         raise ValueError("pass exactly one of model or deployment")
@@ -42,7 +41,6 @@ def eval_config(
         num_samples=1,
         max_parallel=max_parallel,
         on_error="record",
-        cluster_id=cluster_id,
         tags={"benchmark": "pokerbots", "dataset": dataset, "seat_model": deployment or model},
     )
 
@@ -56,12 +54,11 @@ def main() -> None:
     seat.add_argument("--deployment", help="an AC2 inference deployment, e.g. a served checkpoint")
     parser.add_argument("--api-type", default="responses", help="for --model: responses or completions")
     parser.add_argument("--max-parallel", type=int, default=32, help="concurrent hands on your harness")
-    parser.add_argument("--cluster-id")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     config = eval_config(
-        args.dataset, args.model, args.deployment, args.api_type, args.max_parallel, args.cluster_id
+        args.dataset, args.model, args.deployment, args.api_type, args.max_parallel
     )
     if args.dry_run:
         print(config)

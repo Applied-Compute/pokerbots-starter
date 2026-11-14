@@ -7,8 +7,9 @@
 A training checkpoint is first converted to serving weights (`promote`), which can take several minutes. AC2 can
 report a deployment ready before it actually serves, so after it says ready this sends one real chat completion with
 the `submit_action` tool and retries with backoff until it answers. Only then does it print the deployment's name
-(`<project>/<name>`, for `vals_tools.eval --deployment`) and id (`infer_...`, for the arena). Deployments hold GPUs
-until you delete them.
+(`<project>/<name>`, for `vals_tools.eval --deployment`) and id (`infer_...`, for the arena). Qwen3.6-35B-A3B serves
+on 1 GPU per replica, and the default is 1 replica. Deployments hold their GPUs until you delete them; never delete
+the one entered in the arena.
 """
 
 from __future__ import annotations
@@ -19,7 +20,7 @@ import os
 import time
 
 import httpx
-from ac2.sdk import Client
+from ac2.sdk import Client, ScalingConfig
 from ac2.sdk.model import ModelConfig
 
 STATE_POLL_S = 10  # ask AC2 for the deployment's state at most once every 10 s
@@ -91,7 +92,7 @@ def main() -> None:
     source.add_argument("--model", help="a catalog model, e.g. Qwen/Qwen3.6-35B-A3B")
     source.add_argument("--checkpoint", help="a training checkpoint id (ckpt_...), from `ac2 train checkpoints`")
     source.add_argument("--delete", action="store_true", help="delete the deployment with this name")
-    parser.add_argument("--cluster-id")
+    parser.add_argument("--replicas", type=int, default=1, help="replicas, 1 GPU each for Qwen3.6-35B-A3B (default 1)")
     args = parser.parse_args()
 
     client = Client(project=args.project)
@@ -109,8 +110,11 @@ def main() -> None:
         config = ModelConfig(checkpoint=args.checkpoint)
     else:
         config = ModelConfig(model=args.model)
-    print(f"{model_name} holds GPUs (2 for Qwen3.6-35B-A3B) until you delete it: --name {args.name} --delete")
-    deployment_id = client.inference.deploy(name=args.name, model=config, cluster=args.cluster_id)
+    # Qwen3.6-35B-A3B serves on 1 GPU per replica (AC2's model config), so this holds `--replicas` GPUs.
+    print(f"{model_name}: {args.replicas} replica(s), 1 GPU each for Qwen3.6-35B-A3B, held until you delete it "
+          f"(--name {args.name} --delete)")
+    scaling = ScalingConfig(min_replicas=args.replicas, max_replicas=args.replicas)
+    deployment_id = client.inference.deploy(name=args.name, model=config, scaling=scaling)  # AC2 places it
     print(f"deploying {model_name} as {deployment_id}", flush=True)
     wait_until_serving(client, deployment_id, model_name)
     print(json.dumps({"deployment": model_name, "deployment_id": deployment_id}))

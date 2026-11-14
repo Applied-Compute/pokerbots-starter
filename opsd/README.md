@@ -18,7 +18,9 @@ toward the teacher's on replies the base model actually wrote.
    uv run python opsd/build_dataset.py --eval <eval-id> --dataset pokerbots-opsd-train --dry-run
    uv run python opsd/build_dataset.py --eval <eval-id> --dataset pokerbots-opsd-train
    ```
-3. **Train** ([`train.py`](train.py)): 20 steps of 64 decisions at lr 2e-6, a checkpoint every 10.
+3. **Train** ([`train.py`](train.py)): 20 steps of 64 decisions, a checkpoint every 10. The learning rate and
+   lengths are AC2's defaults unless you pass `--lr`, `--max-response-len` or `--max-total-len`; `--dry-run` lists
+   every setting the launch sends.
    ```bash
    uv run python opsd/train.py --dataset pokerbots-opsd-train --dry-run
    uv run python opsd/train.py --dataset pokerbots-opsd-train

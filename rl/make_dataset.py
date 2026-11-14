@@ -4,8 +4,11 @@ Writes <prefix>-train, -select (for picking checkpoints), -eval (held out), -smo
 starts from the harness's "event" preset. Runs on these datasets name no grader, so the harness's sample
 grader (harness/src/poker_harness/grading.py) scores each hand by its EV in big blinds.
 
-    uv run python rl/make_dataset.py --project <project> --opponent-model <project>/<endpoint> --dry-run
-    uv run python rl/make_dataset.py --project <project> --opponent-model <project>/<endpoint>
+    uv run python rl/make_dataset.py --dry-run
+    uv run python rl/make_dataset.py
+    uv run python rl/make_dataset.py --opponent-model vals-hackathon/opponent --opponent-api responses --opponent-effort medium
+
+By default the opponents are `vals-hackathon/ac-vals-model`, the model every team org starts with.
 """
 
 from __future__ import annotations
@@ -22,11 +25,17 @@ from vals_tools.tasks import SEATS, Opponents, datasets  # noqa: E402
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--project", default="pokerbots")
+    parser.add_argument("--project", default="vals-hackathon")
     parser.add_argument("--prefix", default="pokerbots")
-    parser.add_argument("--opponent-model", required=True, help="model name the harness calls for opponent seats")
-    parser.add_argument("--opponent-api", choices=["responses", "chat"], default="responses")
-    parser.add_argument("--opponent-effort", default="medium", help="reasoning effort; 'none' leaves it unset")
+    parser.add_argument(
+        "--opponent-model",
+        default="vals-hackathon/ac-vals-model",
+        help="model the opponent seats call (default: the model every team org starts with)",
+    )
+    parser.add_argument(
+        "--opponent-api", choices=["responses", "chat"], default="chat", help="responses for OpenAI reasoning models"
+    )
+    parser.add_argument("--opponent-effort", default="none", help="reasoning effort for the opponents, e.g. medium")
     parser.add_argument("--seats", type=int, default=SEATS)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()

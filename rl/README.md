@@ -31,8 +31,8 @@ uv run python -m vals_tools.eval --project <project> --dataset pokerbots-smoke -
 uv run python rl/train.py --project <project>
 ```
 
-`--concurrency` caps concurrent hands on your harness (unset by default, so AC2 may send a whole step, 256
-  hands, at once; `--concurrency 64` suits the default `SHARDS=4`). `--steps`, `--lr` and `--prefix`
+`--concurrency` caps concurrent hands on your harness. It's unset by default, so AC2 may send a whole step (16 hands
+× 16 attempts = 256 games) at once; `--concurrency 64` suits the default `SHARDS=4`. `--steps`, `--lr` and `--prefix`
 change the obvious things.
 
 ## Cost and capacity

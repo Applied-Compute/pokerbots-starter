@@ -8,7 +8,8 @@
   The run names no grader.
 - **Method:** Dr. GRPO (`--advantage dr-grpo`) with a small KL penalty (`--kl-coef 0.01`), 16 hands per step
   (`--hands-per-step`) with 16 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
-- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`), about 8 GPUs in all.
+- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`). These are the training
+  run's own engines, 2 GPUs each (deployments are separate, 1 GPU each), so the run uses about 8 GPUs in all.
   AC2's own default for this model is 4 of each, 20 GPUs, more than a team's 10-GPU quota.
 - **Token budget:** see below. **Everything else is AC2's default** (learning rate, sampling concurrency,
   checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,

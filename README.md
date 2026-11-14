@@ -198,9 +198,9 @@ quota sits **queued** until enough GPUs free up. GPU use for `Qwen/Qwen3.6-35B-A
 
 | Job | GPUs |
 | --- | --- |
-| RL run (`rl/train.py`): 4 to train + 2 for the rollout engine + 2 for the in-run eval | 8 (6 with `--no-eval`) |
+| RL run (`rl/train.py`): 4 to train + 2 for its rollout engine + 2 for its in-run eval engine | 8 (6 with `--no-eval`) |
 | Offline OPSD run (`opsd/train.py`): training only | 4 |
-| Inference deployment (`vals_tools.deploy`): base model, checkpoint or arena entry | 1 each |
+| Inference deployment (`vals_tools.deploy`): base model, checkpoint or arena entry | 1 per deployment |
 | Eval through your harness (`vals_tools.eval`) | 0 extra: it plays the deployment it's given |
 
 **What fits at once:** one RL run plus up to 2 deployments (8 + 2 × 1); or OPSD plus up to 6 deployments
@@ -209,8 +209,9 @@ quota sits **queued** until enough GPUs free up. GPU use for `Qwen/Qwen3.6-35B-A
 - **Each inference deployment uses 1 GPU.** Qwen3.6-35B-A3B serves on a single GPU (tensor-parallel 1,
   262,144-token context), which is plenty for a 30-hand game: each prompt holds only the current hand and the
   scratchpad. `vals_tools.deploy` always creates exactly that: one GPU, for evals and for your arena entry alike.
-- **Training's inference engines use 2 GPUs each.** AC2's model config runs each rollout and in-run eval engine on 2
-  GPUs, and no run setting changes that, so they can't go down to 1. AC2's default of 4 of each would ask for 20 GPUs
+- **A training run's own inference engines use 2 GPUs each.** This is inside an RL run, not a deployment: AC2's
+  model config runs each training rollout and in-run eval engine on 2 GPUs, and no run setting changes that, so they
+  can't go down to 1. AC2's default of 4 of each would ask for 20 GPUs
   per RL run, which is why `rl/train.py` sets 1 rollout and 1 eval replica.
 - **Delete idle deployments** to free quota: `uv run python -m vals_tools.deploy --name <name> --delete`. A deployment
   holds its GPU until it's deleted, even when nothing calls it. **Never delete the deployment entered in the arena.**

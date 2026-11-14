@@ -1,7 +1,9 @@
 """GRPO on single 6-max hands through your self-hosted harness, graded by the harness's sample grader.
 
 Every setting this script sends is a flag below. A flag left unset is not sent, so AC2 uses its own default for it
-(learning rate, response and context length, inference replicas, sampling concurrency, ...). `--dry-run` prints the
+(learning rate, response and context length, sampling concurrency, ...). Replica counts are the exception: AC2's
+default for Qwen3.6-35B-A3B is 4 inference and 4 eval replicas (2 GPUs each), 20 GPUs per run with training, more
+than a team's 10-GPU quota, so the recipe sets 1 of each: 8 GPUs. `--dry-run` prints the
 settings this launch sets and the exact configuration it would submit; nothing else is overridden.
 
     uv run python rl/train.py --dry-run
@@ -53,6 +55,7 @@ def run_config(args: argparse.Namespace, name: str) -> RunConfig:
                 eval_before_train=True,  # step 0 plays the same deals with the untrained model: the comparison
                 samples_per_problem=1,
                 mode="sidecar",
+                n_inference_replicas=args.eval_replicas,
                 global_sampling_concurrency=args.eval_concurrency,
             )
         )
@@ -98,7 +101,7 @@ def run_config(args: argparse.Namespace, name: str) -> RunConfig:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--project", default="pokerbots")
+    p.add_argument("--project", default="vals-hackathon")
     p.add_argument("--prefix", default="pokerbots", help="dataset prefix from rl/make_dataset.py")
     p.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B", help="base model (arena entries must fine-tune this one)")
     p.add_argument("--dry-run", action="store_true", help="print the settings and configuration, submit nothing")
@@ -111,6 +114,10 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--checkpoint-every", type=int, default=10, help="steps between checkpoints (default 10)")
     g.add_argument("--eval-every", type=int, default=10, help="steps between in-run evals (default 10)")
     g.add_argument("--no-eval", action="store_true", help="no in-run eval")
+    g.add_argument("--inference-replicas", type=int, default=1,
+                   help="inference replicas for rollouts, 2 GPUs each (default 1; AC2's own default is 4)")
+    g.add_argument("--eval-replicas", type=int, default=1,
+                   help="replicas for the in-run eval, 2 GPUs each (default 1; AC2's own default is 4)")
     g.add_argument("--no-thinking", dest="thinking", action="store_false",
                    help="don't render prompts with Qwen thinking on (the event has it on)")
     g.add_argument("--no-tensorboard", dest="tensorboard", action="store_false", help="don't record TensorBoard logs")
@@ -121,7 +128,6 @@ def parser() -> argparse.ArgumentParser:
                         "tokens per decision and 10,000 per cleanup turn)")
     a.add_argument("--max-total-len", type=int, help="prompt plus reply token limit")
     a.add_argument("--concurrency", type=int, help="concurrent hands on your harness")
-    a.add_argument("--inference-replicas", type=int, help="inference replicas for rollouts")
     a.add_argument("--keep-checkpoints", type=int, help="checkpoints to keep")
     a.add_argument("--eval-dataset", help="in-run eval dataset (default <prefix>-select)")
     a.add_argument("--eval-concurrency", type=int, help="concurrent hands in the in-run eval")
@@ -131,12 +137,23 @@ def parser() -> argparse.ArgumentParser:
 
 
 def explicit_settings(p: argparse.ArgumentParser, args: argparse.Namespace) -> dict[str, Any]:
-    skip = {"project", "dry_run", "help"} | ({"eval_every", "eval_dataset", "eval_concurrency"} if args.no_eval else set())
+    skip = {"project", "dry_run", "help"} | (
+        {"eval_every", "eval_dataset", "eval_concurrency", "eval_replicas"} if args.no_eval else set()
+    )
     return {
         action.dest: getattr(args, action.dest)
         for action in p._actions  # noqa: SLF001
         if action.dest not in skip and getattr(args, action.dest, None) not in (None, False)
     }
+
+
+def gpu_estimate(args: argparse.Namespace) -> str:
+    """GPUs this run holds while it trains, from AC2's per-model defaults (docs: Training configuration)."""
+    if args.model != "Qwen/Qwen3.6-35B-A3B":
+        return "GPUs: see AC2's Training configuration docs (Default GPUs) for this model"
+    inference = 2 * (args.inference_replicas or 4)
+    evals = 0 if args.no_eval else 2 * (args.eval_replicas or 4)
+    return f"GPUs while running: about {4 + inference + evals} (4 training + {inference} rollout inference + {evals} eval)"
 
 
 def main() -> None:
@@ -148,6 +165,7 @@ def main() -> None:
         print("This launch sets (everything else is AC2's default):")
         for key, value in explicit_settings(p, args).items():
             print(f"  {key} = {value}")
+        print(gpu_estimate(args))
         print(json.dumps(config.to_json(), indent=1, default=str))
         return
     run = Client(project=args.project).train.run(config)

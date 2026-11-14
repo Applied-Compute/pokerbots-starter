@@ -80,7 +80,7 @@ def run_config(args: argparse.Namespace, name: str) -> RunConfig:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--project", default="pokerbots")
+    p.add_argument("--project", default="vals-hackathon")
     p.add_argument("--dataset", required=True, help="hinted dataset from build_dataset.py")
     p.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B", help="base model (arena entries must fine-tune this one)")
     p.add_argument("--dry-run", action="store_true", help="print the settings and configuration, submit nothing")
@@ -113,6 +113,7 @@ def main() -> None:
             if action.dest not in skip and value not in (None, False):
                 print(f"  {action.dest} = {value}")
         print("  samples_per_problem = 1, n_inference_replicas = 0, eval = off (required by offline mode)")
+        print("GPUs while running: about 4 for Qwen3.6-35B-A3B (training only; offline OPSD samples nothing)")
         print(json.dumps(config.to_json(), indent=1, default=str))
         return
     run = Client(project=args.project).train.run(config)

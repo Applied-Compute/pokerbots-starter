@@ -8,8 +8,10 @@
   The run names no grader.
 - **Method:** Dr. GRPO (`--advantage dr-grpo`) with a small KL penalty (`--kl-coef 0.01`), 16 hands per step
   (`--hands-per-step`) with 4 attempts each (`--samples-per-hand`), 60 steps (`--steps`).
-- **Everything else is AC2's default** (learning rate, response and context length, inference replicas, sampling
-  concurrency, checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,
+- **Replicas:** 1 rollout and 1 eval replica (`--inference-replicas`, `--eval-replicas`), about 8 GPUs in all.
+  AC2's own default for this model is 4 of each, 20 GPUs, more than a team's 10-GPU quota.
+- **Everything else is AC2's default** (learning rate, response and context length, sampling concurrency,
+  checkpoints kept) unless you pass the matching flag. `--dry-run` lists every setting the launch sends,
   then the exact configuration.
 - **Scratchpad:** tasks use the event preset, so every rollout ends with the after-hand `update_scratchpad` turn.
   In a single-hand task that update is never read, and the grader ignores it. The harness asks for at most 5,000
@@ -32,7 +34,7 @@ change the obvious things.
 
 ## Cost and capacity
 
-- **GPUs:** one training node plus one inference replica for rollouts and one for the sidecar eval.
+- **GPUs:** about 8 while running: 4 to train, 2 for the rollout replica, 2 for the in-run eval replica.
 - **Opponent calls:** every hand makes several opponent calls per seat, so 64 hands a step is a few hundred opponent
   calls a step. Check your opponent endpoint's price and rate limits before a long run.
 - **Harness:** one shard handles a few dozen concurrent hands. Run enough shards (`SHARDS=`) for the run's

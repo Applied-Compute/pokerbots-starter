@@ -403,10 +403,10 @@ Expect log lines like `[router] starting shard 0: uvicorn poker_harness.server:a
 
 ### 5. Connect the harness to AC2 (terminal 2)
 
-The connector needs its own credentials. An org admin creates them once:
+The connector needs its own credentials, bound to your project. An org admin creates them:
 
 ```bash
-ac2 harness credentials create
+ac2 harness credentials create --project-id <prj_... from step 1>
 ```
 
 It prints `AC2_SERVICE_CLIENT_ID` and `AC2_SERVICE_CLIENT_SECRET`. Store them safely; the secret isn't shown again.
